@@ -2139,6 +2139,18 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
       out.append(new CodePrinter.Builder(assign).setPrettyPrint(true).build());
     }
 
+    // First, print all defines passed in
+    Set<Entry<String, Node>> defines = compiler.getOptions().getDefineReplacements().entrySet();
+    if (!defines.isEmpty()) {
+      Node[] defineNodes = defines.stream()
+              .map((entry) -> IR.propdef(IR.stringKey(entry.getKey()), entry.getValue()))
+              .toArray(Node[]::new);
+
+      Node wrapper = IR.objectlit(defineNodes);
+      Node assign = IR.assign(IR.getprop(IR.thisNode(), IR.string("CLOSURE_UNCOMPILED_DEFINES")), wrapper);
+      out.append(new CodePrinter.Builder(assign).setPrettyPrint(true).build());
+    }
+
     for (CompilerInput input : inputs) {
       String name = input.getName();
       String code = input.getSourceFile().getCode();
