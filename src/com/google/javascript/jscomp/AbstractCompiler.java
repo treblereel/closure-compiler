@@ -720,4 +720,5 @@ public abstract class AbstractCompiler implements SourceExcerptProvider {
   public abstract ModuleMap getModuleMap();
 
   public abstract void setModuleMap(ModuleMap moduleMap);
+
 }
