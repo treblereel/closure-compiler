@@ -2019,7 +2019,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
             if (isManifest) {
               printManifestTo(module.getInputs(), out);
             } else {
-              printBundleTo(module.getInputs(), out);
+              printBundleTo(module.getInputs(), out, outputPath);
             }
           }
         }
@@ -2031,7 +2031,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
             if (isManifest) {
               printManifestTo(compiler.getInputsInOrder(), out);
             } else {
-              printBundleTo(compiler.getInputsInOrder(), out);
+              printBundleTo(compiler.getInputsInOrder(), out, outputPath);
             }
           } else {
             printModuleGraphManifestOrBundleTo(compiler.getModuleGraph(), out, isManifest);
@@ -2061,9 +2061,14 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
 
   /** Prints a set of modules to the manifest or bundle file. */
   @VisibleForTesting
+<<<<<<< HEAD
   @GwtIncompatible("Unnecessary")
   void printModuleGraphManifestOrBundleTo(JSModuleGraph graph, Appendable out, boolean isManifest)
       throws IOException {
+=======
+  void printModuleGraphManifestOrBundleTo(JSModuleGraph graph,
+      Appendable out, boolean isManifest, String outputPath) throws IOException {
+>>>>>>> Build bundle source as string, with relative path from bundle file so sourcemaps work
     Joiner commas = Joiner.on(",");
     boolean requiresNewline = false;
     for (JSModule module : graph.getAllModules()) {
@@ -2081,7 +2086,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
                 dependencies.isEmpty() ? "" : ":" + dependencies));
         printManifestTo(module.getInputs(), out);
       } else {
-        printBundleTo(module.getInputs(), out);
+        printBundleTo(module.getInputs(), out, outputPath);
       }
       requiresNewline = true;
     }
@@ -2109,6 +2114,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
    * (using root-relative paths) before each file.
    */
   @VisibleForTesting
+<<<<<<< HEAD
   @GwtIncompatible("Unnecessary")
   void printBundleTo(Iterable<CompilerInput> inputs, Appendable out) throws IOException {
     // Prebuild ASTs before they're needed in getLoadFlags, for performance and because
@@ -2138,6 +2144,10 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
       Node assign = IR.assign(IR.getprop(IR.thisNode(), IR.string("CLOSURE_UNCOMPILED_DEFINES")), wrapper);
       out.append(new CodePrinter.Builder(assign).setPrettyPrint(true).build());
     }
+=======
+  void printBundleTo(Iterable<CompilerInput> inputs, Appendable out, String outputPath)
+      throws IOException {
+>>>>>>> Build bundle source as string, with relative path from bundle file so sourcemaps work
 
     // First, print all defines passed in
     Set<Entry<String, Node>> defines = compiler.getOptions().getDefineReplacements().entrySet();
@@ -2171,7 +2181,27 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
       out.append(displayName);
       out.append("\n");
 
+<<<<<<< HEAD
       prepForBundleAndAppendTo(out, input, code);
+=======
+      if (input.isModule()) {
+        // TODO(sdh): This is copied from ClosureBundler
+        out.append("goog.loadModule(\"'use strict'\"+");
+        out.append(new CodePrinter.Builder(IR.string(input.getSourceFile().getCode())).build());
+
+        String pathToInput = new File(input.getName()).getCanonicalPath();
+        String pathToOutput = new File(outputPath).getParentFile().getCanonicalPath();
+        String relativePath = Paths.get(pathToOutput).relativize(Paths.get(pathToInput)).toString();
+        if (!relativePath.startsWith("..")) {
+          out.append("+'\\n//# sourceURL=").append(relativePath).append("'");
+        }
+
+        out.append(");\n");
+      } else {
+        out.append(input.getSourceFile().getCode());
+      }
+
+>>>>>>> Build bundle source as string, with relative path from bundle file so sourcemaps work
       out.append("\n");
     }
   }
