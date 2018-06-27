@@ -40,6 +40,13 @@ var top;
 var navigator;
 
 /**
+ * @type {number}
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio
+ * @const
+ */
+var devicePixelRatio;
+
+/**
  * @type {!HTMLDocument}
  * @see https://developer.mozilla.org/en/DOM/window.document
  * @const
