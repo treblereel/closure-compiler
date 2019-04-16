@@ -152,7 +152,7 @@ final class Es6RewriteGenerators implements HotSwapCompilerPass {
    * }
    * </pre>
    *
-   * <p>Expression should always be inside a block, so that other statemetns could be added at need.
+   * <p>Expression should always be inside a block, so that other statements could be added at need.
    *
    * <p>Uses the {@link ExpressionDecomposer} class.
    */
@@ -167,7 +167,7 @@ final class Es6RewriteGenerators implements HotSwapCompilerPass {
               compiler.getUniqueNameIdSupplier(),
               new HashSet<>(),
               Scope.createGlobalScope(new Node(Token.SCRIPT)),
-              compiler.getOptions().allowMethodCallDecomposing());
+              /* allowMethodCallDecomposing = */ true);
     }
 
     @Override
@@ -266,7 +266,7 @@ final class Es6RewriteGenerators implements HotSwapCompilerPass {
         if (genFunc.getJSType() != null && genFunc.getJSType().isFunctionType()) {
           FunctionType fnType = genFunc.getJSType().toMaybeFunctionType();
           this.originalGenReturnType = fnType.getReturnType();
-          yieldType = TypeCheck.getTemplateTypeOfGenerator(registry, originalGenReturnType);
+          yieldType = JsIterables.getElementType(originalGenReturnType, registry);
         }
 
         JSType globalContextType = registry.getGlobalType("$jscomp.generator.Context");

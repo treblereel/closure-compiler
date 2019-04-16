@@ -53,8 +53,8 @@ import java.util.Set;
 public final class JsDocInfoParser {
   @VisibleForTesting
   public static final String BAD_TYPE_WIKI_LINK =
-      " See https://github.com/google/closure-compiler/wiki/Bad-Type-Annotation for"
-            + " more information.";
+      " See https://github.com/google/closure-compiler/wiki/Annotating-JavaScript-for-the-Closure-Compiler"
+          + " for more information.";
 
   private final JsDocTokenStream stream;
   private final JSDocInfoBuilder jsdocBuilder;
@@ -119,6 +119,7 @@ public final class JsDocInfoParser {
 
   private final Map<String, Annotation> annotations;
   private final Set<String> suppressionNames;
+  private final Set<String> closurePrimitiveNames;
   private final boolean preserveWhitespace;
   private static final Set<String> modifiesAnnotationKeywords =
       ImmutableSet.of("this", "arguments");
@@ -159,13 +160,13 @@ public final class JsDocInfoParser {
     NEXT_IS_ANNOTATION
   }
 
-
-  JsDocInfoParser(JsDocTokenStream stream,
-                  String comment,
-                  int commentPosition,
-                  Node templateNode,
-                  Config config,
-                  ErrorReporter errorReporter) {
+  public JsDocInfoParser(
+      JsDocTokenStream stream,
+      String comment,
+      int commentPosition,
+      Node templateNode,
+      Config config,
+      ErrorReporter errorReporter) {
     this.stream = stream;
 
     boolean parseDocumentation = config.jsDocParsingMode().shouldParseDescriptions();
@@ -176,6 +177,7 @@ public final class JsDocInfoParser {
     }
     this.annotations = config.annotations();
     this.suppressionNames = config.suppressionNames();
+    this.closurePrimitiveNames = config.closurePrimitiveNames();
     this.preserveWhitespace = config.jsDocParsingMode().shouldPreserveWhitespace();
 
     this.errorReporter = errorReporter;
@@ -249,6 +251,7 @@ public final class JsDocInfoParser {
         Config.builder()
             .setLanguageMode(LanguageMode.ECMASCRIPT3)
             .setStrictMode(Config.StrictMode.SLOPPY)
+            .setClosurePrimitiveNames(ImmutableSet.of("testPrimitive"))
             .build();
     JsDocInfoParser parser =
         new JsDocInfoParser(
@@ -258,14 +261,12 @@ public final class JsDocInfoParser {
   }
 
   /**
-   * Parses a {@link JSDocInfo} object. This parsing method reads all tokens
-   * returned by the {@link JsDocTokenStream#getJsDocToken()} method until the
-   * {@link JsDocToken#EOC} is returned.
+   * Parses a {@link JSDocInfo} object. This parsing method reads all tokens returned by the {@link
+   * JsDocTokenStream#getJsDocToken()} method until the {@link JsDocToken#EOC} is returned.
    *
-   * @return {@code true} if JSDoc information was correctly parsed,
-   *     {@code false} otherwise
+   * @return {@code true} if JSDoc information was correctly parsed, {@code false} otherwise
    */
-  boolean parse() {
+  public boolean parse() {
     state = State.SEARCHING_ANNOTATION;
     skipEOLs();
 
@@ -630,6 +631,8 @@ public final class JsDocInfoParser {
                 && token != JsDocToken.EOC) {
               addTypeWarning("msg.end.annotation.expected");
             }
+          } else if (token == JsDocToken.BANG || token == JsDocToken.QMARK) {
+            addTypeWarning("msg.jsdoc.implements.extraqualifier", lineno, charno);
           } else {
             addTypeWarning("msg.no.type.name", lineno, charno);
           }
@@ -653,7 +656,7 @@ public final class JsDocInfoParser {
 
           if (match(JsDocToken.STRING)) {
             token = next();
-            if (!jsdocBuilder.recordLends(stream.getString())) {
+            if (!jsdocBuilder.recordLends(createJSTypeExpression(IR.string(stream.getString())))) {
               addTypeWarning("msg.jsdoc.lends.incompatible");
             }
           } else {
@@ -673,6 +676,10 @@ public final class JsDocInfoParser {
             addParserWarning("msg.jsdoc.meaning.extra");
           }
           return token;
+
+        case CLOSURE_PRIMITIVE:
+          skipEOLs();
+          return parseClosurePrimitiveTag(next());
 
         case NO_COMPILE:
           if (!jsdocBuilder.recordNoCompile()) {
@@ -1338,12 +1345,40 @@ public final class JsDocInfoParser {
         addParserWarning("msg.jsdoc.suppress");
       } else {
         token = next();
-        if (!jsdocBuilder.recordSuppressions(suppressions)) {
-          addParserWarning("msg.jsdoc.suppress.duplicate");
-        }
+        jsdocBuilder.recordSuppressions(suppressions);
       }
       return eatUntilEOLIfNotAnnotation();
     }
+  }
+
+  /**
+   * Parse a {@code @closurePrimitive} tag
+   *
+   * @param token The current token.
+   */
+  private JsDocToken parseClosurePrimitiveTag(JsDocToken token) {
+    if (token != JsDocToken.LEFT_CURLY) {
+      addParserWarning("msg.jsdoc.missing.lc");
+      return token;
+    } else if (match(JsDocToken.STRING)) {
+      String name = stream.getString();
+      if (!closurePrimitiveNames.contains(name)) {
+        addParserWarning("msg.jsdoc.closurePrimitive.invalid", name);
+      } else if (!jsdocBuilder.recordClosurePrimitiveId(name)) {
+        addParserWarning("msg.jsdoc.closurePrimitive.extra");
+      }
+      token = next();
+    } else {
+      addParserWarning("msg.jsdoc.closurePrimitive.missing");
+      return token;
+    }
+
+    if (!match(JsDocToken.RIGHT_CURLY)) {
+      addParserWarning("msg.jsdoc.missing.rc");
+    } else {
+      token = next();
+    }
+    return eatUntilEOLIfNotAnnotation();
   }
 
   /**
@@ -1919,6 +1954,9 @@ public final class JsDocInfoParser {
   }
 
   /**
+   * Parse a ParamTypeExpression:
+   *
+   * <pre>
    * ParamTypeExpression :=
    *     OptionalParameterType |
    *     TopLevelTypeExpression |
@@ -1926,7 +1964,7 @@ public final class JsDocInfoParser {
    *
    * OptionalParameterType :=
    *     TopLevelTypeExpression '='
-   *
+   * </pre>
    */
   private Node parseParamTypeExpression(JsDocToken token) {
     boolean restArg = false;
@@ -2122,8 +2160,8 @@ public final class JsDocInfoParser {
   }
 
   /**
-   * BasicTypeExpression := '*' | 'null' | 'undefined' | TypeName
-   *     | FunctionType | UnionType | RecordType
+   * BasicTypeExpression := '*' | 'null' | 'undefined' | TypeName | FunctionType | UnionType |
+   * RecordType | TypeofType
    */
   private Node parseBasicTypeExpression(JsDocToken token) {
     if (token == JsDocToken.STAR) {
@@ -2143,6 +2181,9 @@ public final class JsDocInfoParser {
         case "null":
         case "undefined":
           return newStringNode(string);
+        case "typeof":
+          skipEOLs();
+          return parseTypeofType(next());
         default:
           return parseTypeName(token);
       }
@@ -2152,11 +2193,7 @@ public final class JsDocInfoParser {
     return reportGenericTypeSyntaxWarning();
   }
 
-  /**
-   * TypeName := NameExpression | NameExpression TypeApplication
-   * TypeApplication := '.<' TypeExpressionList '>'
-   */
-  private Node parseTypeName(JsDocToken token) {
+  private Node parseNameExpression(JsDocToken token) {
     if (token != JsDocToken.STRING) {
       return reportGenericTypeSyntaxWarning();
     }
@@ -2164,8 +2201,7 @@ public final class JsDocInfoParser {
     String typeName = stream.getString();
     int lineno = stream.getLineno();
     int charno = stream.getCharno();
-    while (match(JsDocToken.EOL) &&
-        typeName.charAt(typeName.length() - 1) == '.') {
+    while (match(JsDocToken.EOL) && typeName.charAt(typeName.length() - 1) == '.') {
       skipEOLs();
       if (match(JsDocToken.STRING)) {
         next();
@@ -2173,12 +2209,24 @@ public final class JsDocInfoParser {
       }
     }
 
-    Node typeNameNode = newStringNode(typeName, lineno, charno);
+    return newStringNode(typeName, lineno, charno);
+  }
+
+  /**
+   * Parse a TypeName:
+   *
+   * <pre>{@code
+   * TypeName := NameExpression | NameExpression TypeApplication
+   * TypeApplication := '.'? '<' TypeExpressionList '>'
+   * }</pre>
+   */
+  private Node parseTypeName(JsDocToken token) {
+    Node typeNameNode = parseNameExpression(token);
 
     if (match(JsDocToken.LEFT_ANGLE)) {
       next();
       skipEOLs();
-      Node memberType = parseTypeExpressionList(typeName, next());
+      Node memberType = parseTypeExpressionList(typeNameNode.getString(), next());
       if (memberType != null) {
         typeNameNode.addChildToFront(memberType);
 
@@ -2193,17 +2241,29 @@ public final class JsDocInfoParser {
     return typeNameNode;
   }
 
+  /** TypeofType := 'typeof' NameExpression | 'typeof' '(' NameExpression ')' */
+  private Node parseTypeofType(JsDocToken token) {
+    Node typeofType = newNode(Token.TYPEOF);
+    Node name = parseNameExpression(token);
+    skipEOLs();
+    typeofType.addChildToFront(name);
+    return typeofType;
+  }
+
   /**
+   * Parse a FunctionType:
+   *
+   * <pre>
    * FunctionType := 'function' FunctionSignatureType
    * FunctionSignatureType :=
    *    TypeParameters '(' 'this' ':' TypeName, ParametersType ')' ResultType
+   * </pre>
    *
-   * <p>The Node that is produced has type Token.FUNCTION but does not look like a typical
-   * function node. If there is a 'this:' or 'new:' type, that type is added as a child.
-   * Then, if there are parameters, a PARAM_LIST node is added as a child. Finally, if
-   * there is a return type, it is added as a child. This means that the parameters
-   * could be the first or second child, and the return type could be
-   * the first, second, or third child.
+   * <p>The Node that is produced has type Token.FUNCTION but does not look like a typical function
+   * node. If there is a 'this:' or 'new:' type, that type is added as a child. Then, if there are
+   * parameters, a PARAM_LIST node is added as a child. Finally, if there is a return type, it is
+   * added as a child. This means that the parameters could be the first or second child, and the
+   * return type could be the first, second, or third child.
    */
   private Node parseFunctionType(JsDocToken token) {
     // NOTE(nicksantos): We're not implementing generics at the moment, so
@@ -2279,6 +2339,9 @@ public final class JsDocInfoParser {
   }
 
   /**
+   * Parse a ParametersType:
+   *
+   * <pre>
    * ParametersType := RestParameterType | NonRestParametersType
    *     | NonRestParametersType ',' RestParameterType
    * RestParameterType := '...' Identifier
@@ -2289,6 +2352,7 @@ public final class JsDocInfoParser {
    *     | OptionalParameterType, OptionalParametersType
    * OptionalParameterType := ParameterType=
    * ParameterType := TypeExpression | Identifier ':' TypeExpression
+   * </pre>
    */
   // NOTE(nicksantos): The official ES4 grammar forces optional and rest
   // arguments to come after the required arguments. Our parser does not
@@ -2697,7 +2761,7 @@ public final class JsDocInfoParser {
     return jsdocBuilder.isPopulatedWithFileOverview();
   }
 
-  JSDocInfo retrieveAndResetParsedJSDocInfo() {
+  public JSDocInfo retrieveAndResetParsedJSDocInfo() {
     return jsdocBuilder.build();
   }
 

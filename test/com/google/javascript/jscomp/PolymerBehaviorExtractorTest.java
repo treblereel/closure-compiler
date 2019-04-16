@@ -22,22 +22,26 @@ import static com.google.javascript.jscomp.testing.JSErrorSubject.assertError;
 import com.google.common.collect.ImmutableList;
 import com.google.javascript.jscomp.PolymerBehaviorExtractor.BehaviorDefinition;
 import com.google.javascript.rhino.Node;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
-/**
- * Unit tests for {@link PolymerBehaviorExtractor}.
- */
+/** Unit tests for {@link PolymerBehaviorExtractor}. */
+@RunWith(JUnit4.class)
 public class PolymerBehaviorExtractorTest extends CompilerTypeTestCase {
 
   private PolymerBehaviorExtractor extractor;
   private Node behaviorArray;
 
   @Override
-  protected void setUp() throws Exception {
+  @Before
+  public void setUp() throws Exception {
     super.setUp();
     behaviorArray = null;
   }
 
-
+  @Test
   public void testArrayBehavior() {
     parseAndInitializeExtractor(
         lines(
@@ -82,6 +86,7 @@ public class PolymerBehaviorExtractorTest extends CompilerTypeTestCase {
     // TODO(jlklein): Actually verify the properties of the BehaviorDefinitions.
   }
 
+  @Test
   public void testInlineLiteralBehavior() {
     parseAndInitializeExtractor(
         lines(
@@ -116,6 +121,7 @@ public class PolymerBehaviorExtractorTest extends CompilerTypeTestCase {
     // TODO(jlklein): Actually verify the properties of the BehaviorDefinitions.
   }
 
+  @Test
   public void testIsPropInBehavior() {
     parseAndInitializeExtractor(
         lines(
@@ -133,8 +139,8 @@ public class PolymerBehaviorExtractorTest extends CompilerTypeTestCase {
             "});"));
     extractor.extractBehaviors(behaviorArray);
 
-    assertThat(compiler.getErrors()).hasLength(1);
-    assertError(compiler.getErrors()[0]).hasType(POLYMER_INVALID_BEHAVIOR);
+    assertThat(compiler.getErrors()).hasSize(1);
+    assertError(compiler.getErrors().get(0)).hasType(POLYMER_INVALID_BEHAVIOR);
   }
 
   // TODO(jlklein): Test more use cases: names to avoid copying, global vs. non-global, etc.
@@ -152,7 +158,7 @@ public class PolymerBehaviorExtractorTest extends CompilerTypeTestCase {
           }
         });
 
-    assertNotNull(behaviorArray);
+    assertThat(behaviorArray).isNotNull();
   }
 
   private boolean isBehaviorArrayDeclaration(Node node) {

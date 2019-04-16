@@ -35,8 +35,10 @@ public abstract class SimpleDependencyInfo extends DependencyInfo.Base {
         .setPathRelativeToClosureBase(srcPathRelativeToClosure)
         .setProvides(ImmutableList.of())
         .setRequires(ImmutableList.of())
-        .setWeakRequires(ImmutableList.of())
-        .setLoadFlags(ImmutableMap.of());
+        .setTypeRequires(ImmutableList.of())
+        .setLoadFlags(ImmutableMap.of())
+        .setHasExternsAnnotation(false)
+        .setHasNoCompileAnnotation(false);
   }
 
   /**
@@ -51,8 +53,10 @@ public abstract class SimpleDependencyInfo extends DependencyInfo.Base {
           .setPathRelativeToClosureBase(copy.getPathRelativeToClosureBase())
           .setProvides(copy.getProvides())
           .setRequires(copy.getRequires())
-          .setWeakRequires(copy.getWeakRequires())
-          .setLoadFlags(copy.getLoadFlags());
+          .setTypeRequires(copy.getTypeRequires())
+          .setLoadFlags(copy.getLoadFlags())
+          .setHasExternsAnnotation(copy.getHasExternsAnnotation())
+          .setHasNoCompileAnnotation(copy.getHasNoCompileAnnotation());
     }
 
     abstract Builder setName(String name);
@@ -65,9 +69,15 @@ public abstract class SimpleDependencyInfo extends DependencyInfo.Base {
 
     public abstract Builder setRequires(Require... requires);
 
-    public abstract Builder setWeakRequires(Collection<String> weakRequires);
-    public abstract Builder setWeakRequires(String... weakRequires);
+    public abstract Builder setTypeRequires(Collection<String> typeRequires);
+
+    public abstract Builder setTypeRequires(String... typeRequires);
+
     public abstract Builder setLoadFlags(Map<String, String> loadFlags);
+
+    public abstract Builder setHasExternsAnnotation(boolean hasExternsAnnotation);
+
+    public abstract Builder setHasNoCompileAnnotation(boolean hasNoCompileAnnotation);
 
     private static final ImmutableMap<String, String> GOOG_MODULE_FLAGS =
         ImmutableMap.of("module", "goog");

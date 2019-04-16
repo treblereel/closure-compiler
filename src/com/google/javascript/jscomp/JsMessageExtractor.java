@@ -18,12 +18,10 @@ package com.google.javascript.jscomp;
 
 import com.google.common.annotations.GwtIncompatible;
 import com.google.common.collect.ImmutableList;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 /**
  * Extracts messages and message comments from JS code.
@@ -129,23 +127,20 @@ public final class JsMessageExtractor {
         ImmutableList.copyOf(inputs),
         options);
     compiler.runInCompilerThread(
-        new Callable<Void>() {
-          @Override
-          public Void call() throws Exception {
-            compiler.parseInputs();
-            return null;
-          }
+        () -> {
+          compiler.parseInputs();
+          return null;
         });
 
     ExtractMessagesVisitor extractCompilerPass =
         new ExtractMessagesVisitor(compiler);
-    if (compiler.getErrors().length == 0) {
+    if (compiler.getErrors().isEmpty()) {
       extractCompilerPass.process(null, compiler.getRoot());
     }
 
-    JSError[] errors = compiler.getErrors();
+    ImmutableList<JSError> errors = compiler.getErrors();
     // Check for errors.
-    if (errors.length > 0) {
+    if (!errors.isEmpty()) {
       StringBuilder msg = new StringBuilder("JSCompiler errors\n");
       MessageFormatter formatter = new LightweightMessageFormatter(compiler);
       for (JSError e : errors) {

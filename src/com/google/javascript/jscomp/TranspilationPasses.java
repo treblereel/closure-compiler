@@ -20,9 +20,9 @@ import static com.google.javascript.jscomp.parsing.parser.FeatureSet.ES2018;
 import static com.google.javascript.jscomp.parsing.parser.FeatureSet.ES6;
 import static com.google.javascript.jscomp.parsing.parser.FeatureSet.ES7;
 import static com.google.javascript.jscomp.parsing.parser.FeatureSet.ES8;
-import static com.google.javascript.jscomp.parsing.parser.FeatureSet.ES8_MODULES;
 import static com.google.javascript.jscomp.parsing.parser.FeatureSet.ES_NEXT;
 
+import com.google.javascript.jscomp.Es6RewriteDestructuring.ObjectDestructuringRewriteMode;
 import com.google.javascript.jscomp.NodeTraversal.Callback;
 import com.google.javascript.jscomp.PassFactory.HotSwapPassFactory;
 import com.google.javascript.jscomp.parsing.parser.FeatureSet;
@@ -46,9 +46,9 @@ public class TranspilationPasses {
             preprocessorTableFactory.maybeInitialize(compiler);
             return new Es6RewriteModules(
                 compiler,
-                preprocessorTableFactory.getInstanceOrNull(),
-                compiler.getOptions().processCommonJSModules,
-                compiler.getOptions().moduleResolutionMode);
+                compiler.getModuleMetadataMap(),
+                compiler.getModuleMap(),
+                preprocessorTableFactory.getInstanceOrNull());
           }
 
           @Override
@@ -60,21 +60,31 @@ public class TranspilationPasses {
 
   public static void addPreTypecheckTranspilationPasses(
       List<PassFactory> passes, CompilerOptions options) {
-    addPreTypecheckTranspilationPasses(
-        passes,
-        options,
-        // This condition works most of the time, but has edge cases that fail in tests.
-        !options.skipNonTranspilationPasses);
+
+    // TODO(bradfordcsmith): Rename this since it isn't just libraries for ES6 features anymore.
+    // Inject runtime libraries needed for the transpilation we will have to do.
+    passes.add(es6InjectRuntimeLibraries);
+
   }
 
-  // TODO(mattmm): eliminate need for this boolean
-  // Tests extending CompilerTestCase and TypeCheckTestCase fail if the es6ExternsCheck pass is
-  // run. Ideally a condition based on the CompilerOptions should be used so that the boolean
-  // parameter can be removed.
-  static void addPreTypecheckTranspilationPasses(
-      List<PassFactory> passes, CompilerOptions options, boolean doEs6ExternsCheck) {
+  public static void addEs6ModuleToCjsPass(List<PassFactory> passes) {
+    passes.add(es6RewriteModuleToCjs);
+  }
+
+  public static void addEs6RewriteImportPathPass(List<PassFactory> passes) {
+    passes.add(es6RelativizeImportPaths);
+  }
+
+  /** Adds transpilation passes that should run after all checks are done. */
+  public static void addPostCheckTranspilationPasses(
+      List<PassFactory> passes, CompilerOptions options) {
+    if (options.needsTranspilationFrom(FeatureSet.ES_NEXT)) {
+      passes.add(rewriteCatchWithNoBinding);
+    }
+
     if (options.needsTranspilationFrom(ES2018)) {
-      passes.add(rewriteObjRestSpread);
+      passes.add(rewriteAsyncIteration);
+      passes.add(rewriteObjectSpread);
     }
 
     if (options.needsTranspilationFrom(ES8)) {
@@ -88,13 +98,13 @@ public class TranspilationPasses {
     }
 
     if (options.needsTranspilationFrom(ES7)) {
-      passes.add(convertEs7ToEs6);
+      passes.add(rewriteExponentialOperator);
     }
 
     if (options.needsTranspilationFrom(ES6)) {
-      if (doEs6ExternsCheck) {
-        passes.add(es6ExternsCheck);
-      }
+      // TODO(b/73387406): Move passes here as typechecking & other check passes are updated to cope
+      // with the features they transpile and as the passes themselves are updated to propagate type
+      // information to the transpiled code.
       // Binary and octal literals are effectively transpiled by the parser.
       // There's no transpilation we can do for the new regexp flags.
       passes.add(
@@ -104,48 +114,29 @@ public class TranspilationPasses {
               Feature.OCTAL_LITERALS,
               Feature.REGEXP_FLAG_U,
               Feature.REGEXP_FLAG_Y));
+
       passes.add(es6NormalizeShorthandProperties);
+      passes.add(es6RewriteClassExtends);
       passes.add(es6ConvertSuper);
       passes.add(es6RenameVariablesInParamLists);
       passes.add(es6SplitVariableDeclarations);
-      passes.add(es6RewriteDestructuring);
+      passes.add(
+          getEs6RewriteDestructuring(ObjectDestructuringRewriteMode.REWRITE_ALL_OBJECT_PATTERNS));
       passes.add(es6RewriteArrowFunction);
       passes.add(es6ExtractClasses);
       passes.add(es6RewriteClass);
-      passes.add(es6InjectRuntimeLibraries);
-      if (!options.checksOnly) {
-        // Don't run these passes in checksOnly mode since all the typechecking & checks passes
-        // support the transpiled features.
-        // TODO(b/73387406): Move each pass above here temporarily, then into
-        // addEs6PostCheck Passes once the pass supports propagating type information
-      }
+      passes.add(es6RewriteRestAndSpread);
+      passes.add(lateConvertEs6ToEs3);
+      passes.add(es6ForOf);
+      passes.add(rewriteBlockScopedFunctionDeclaration);
+      passes.add(rewriteBlockScopedDeclaration);
+      passes.add(rewriteGenerators);
+      passes.add(es6ConvertSuperConstructorCalls);
+    } else if (options.needsTranspilationOf(Feature.OBJECT_PATTERN_REST)) {
+      passes.add(es6RenameVariablesInParamLists);
+      passes.add(es6SplitVariableDeclarations);
+      passes.add(getEs6RewriteDestructuring(ObjectDestructuringRewriteMode.REWRITE_OBJECT_REST));
     }
-  }
-
-  public static void addEs6ModuleToCjsPass(List<PassFactory> passes) {
-    passes.add(es6RewriteModuleToCjs);
-  }
-
-  public static void addEs6RewriteImportPathPass(List<PassFactory> passes) {
-    passes.add(es6RewriteImportPaths);
-  }
-
-  /** Deprecated: use addPostCheckTranspilationPasses instead. */
-  @Deprecated
-  public static void addPostTypecheckTranspilationPasses(List<PassFactory> passes) {}
-
-  /** Adds transpilation passes that should run after all checks are done. */
-  public static void addPostCheckTranspilationPasses(List<PassFactory> passes) {
-    // TODO(b/73387406): Move passes here as typechecking & other check passes are updated to cope
-    // with the features they transpile and as the passes themselves are updated to propagate type
-    // information to the transpiled code.
-    passes.add(es6RewriteRestAndSpread);
-    passes.add(lateConvertEs6ToEs3);
-    passes.add(es6ForOf);
-    passes.add(rewriteBlockScopedFunctionDeclaration);
-    passes.add(rewriteBlockScopedDeclaration);
-    passes.add(rewriteGenerators);
-    passes.add(es6ConvertSuperConstructorCalls);
   }
 
   /**
@@ -154,6 +145,7 @@ public class TranspilationPasses {
   public static void addRewritePolyfillPass(List<PassFactory> passes) {
     passes.add(rewritePolyfills);
   }
+
 
   /** Rewrites ES6 modules */
   private static final PassFactory es6RewriteModuleToCjs =
@@ -170,11 +162,11 @@ public class TranspilationPasses {
       };
 
   /** Rewrites ES6 modules import paths to be browser compliant */
-  private static final PassFactory es6RewriteImportPaths =
-      new PassFactory("es6RewriteImportPaths", true) {
+  private static final PassFactory es6RelativizeImportPaths =
+      new PassFactory("es6RelativizeImportPaths", true) {
         @Override
         protected CompilerPass create(AbstractCompiler compiler) {
-          return new Es6RewriteImportPaths(compiler);
+          return new Es6RelativizeImportPaths(compiler);
         }
 
         @Override
@@ -187,20 +179,13 @@ public class TranspilationPasses {
       new HotSwapPassFactory("rewriteAsyncFunctions") {
         @Override
         protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
-          return new RewriteAsyncFunctions(compiler);
-        }
-
-        @Override
-        protected FeatureSet featureSet() {
-          return ES8;
-        }
-      };
-
-  private static final PassFactory rewriteObjRestSpread =
-      new HotSwapPassFactory("rewriteObjRestSpread") {
-        @Override
-        protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
-          return new EsNextToEs8Converter(compiler);
+          return new RewriteAsyncFunctions.Builder(compiler)
+              // If ES6 classes will not be transpiled away later,
+              // transpile away property references that use `super` in async functions.
+              // See explanation in RewriteAsyncFunctions.
+              .rewriteSuperPropertyReferencesWithoutSuper(
+                  !compiler.getOptions().needsTranspilationFrom(FeatureSet.ES6))
+              .build();
         }
 
         @Override
@@ -209,8 +194,53 @@ public class TranspilationPasses {
         }
       };
 
-  private static final PassFactory convertEs7ToEs6 =
-      new HotSwapPassFactory("convertEs7ToEs6") {
+  private static final PassFactory rewriteAsyncIteration =
+      new HotSwapPassFactory("rewriteAsyncIteration") {
+        @Override
+        protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
+          return new RewriteAsyncIteration.Builder(compiler)
+              // If ES6 classes will not be transpiled away later,
+              // transpile away property references that use `super` in async iteration.
+              // See explanation in RewriteAsyncIteration.
+              .rewriteSuperPropertyReferencesWithoutSuper(
+                  !compiler.getOptions().needsTranspilationFrom(FeatureSet.ES6))
+              .build();
+        }
+
+        @Override
+        protected FeatureSet featureSet() {
+          return ES_NEXT;
+        }
+      };
+
+  private static final PassFactory rewriteObjectSpread =
+      new HotSwapPassFactory("rewriteObjectSpread") {
+        @Override
+        protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
+          return new RewriteObjectSpread(compiler);
+        }
+
+        @Override
+        protected FeatureSet featureSet() {
+          return ES_NEXT;
+        }
+      };
+
+  private static final PassFactory rewriteCatchWithNoBinding =
+      new HotSwapPassFactory("rewriteCatchWithNoBinding") {
+        @Override
+        protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
+          return new RewriteCatchWithNoBinding(compiler);
+        }
+
+        @Override
+        protected FeatureSet featureSet() {
+          return ES_NEXT;
+        }
+      };
+
+  private static final PassFactory rewriteExponentialOperator =
+      new HotSwapPassFactory("rewriteExponentialOperator") {
         @Override
         protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
           return new Es7RewriteExponentialOperator(compiler);
@@ -218,7 +248,7 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return ES2018;
         }
       };
 
@@ -231,21 +261,20 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return ES2018;
         }
       };
 
-  static final PassFactory es6ExternsCheck =
-      new PassFactory("es6ExternsCheck", true) {
+  static final HotSwapPassFactory es6RewriteClassExtends =
+      new HotSwapPassFactory(PassNames.ES6_REWRITE_CLASS_EXTENDS) {
         @Override
-        protected CompilerPass create(final AbstractCompiler compiler) {
-          // TODO (mattmm): Investigate if this can be removed
-          return new Es6ExternsCheck(compiler);
+        protected HotSwapCompilerPass create(AbstractCompiler compiler) {
+          return new Es6RewriteClassExtendsExpressions(compiler);
         }
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8_MODULES;
+          return ES2018;
         }
       };
 
@@ -266,7 +295,7 @@ public class TranspilationPasses {
       new HotSwapPassFactory("Es6RewriteClass") {
         @Override
         protected HotSwapCompilerPass create(AbstractCompiler compiler) {
-          return new Es6RewriteClass(compiler, true);
+          return new Es6RewriteClass(compiler);
         }
 
         @Override
@@ -275,18 +304,22 @@ public class TranspilationPasses {
         }
       };
 
-  static final HotSwapPassFactory es6RewriteDestructuring =
-      new HotSwapPassFactory("Es6RewriteDestructuring") {
-        @Override
-        protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
-          return new Es6RewriteDestructuring(compiler);
-        }
+  static final HotSwapPassFactory getEs6RewriteDestructuring(
+      ObjectDestructuringRewriteMode rewriteMode) {
+    return new HotSwapPassFactory("Es6RewriteDestructuring") {
+      @Override
+      protected HotSwapCompilerPass create(final AbstractCompiler compiler) {
+        return new Es6RewriteDestructuring.Builder(compiler)
+            .setDestructuringRewriteMode(rewriteMode)
+            .build();
+      }
 
-        @Override
-        protected FeatureSet featureSet() {
-          return ES8;
-        }
-      };
+      @Override
+      protected FeatureSet featureSet() {
+        return ES2018;
+      }
+    };
+  }
 
   static final HotSwapPassFactory es6RenameVariablesInParamLists =
       new HotSwapPassFactory("Es6RenameVariablesInParamLists") {
@@ -297,7 +330,7 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return ES2018;
         }
       };
 
@@ -323,7 +356,7 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8_MODULES;
+          return FeatureSet.latest();
         }
       };
 
@@ -336,7 +369,7 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return FeatureSet.latest();
         }
       };
 
@@ -362,9 +395,9 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return ES2018;
         }
-  };
+      };
 
   /** Injects runtime library code needed for transpiled ES6 code. */
   static final HotSwapPassFactory es6InjectRuntimeLibraries =
@@ -376,7 +409,7 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return ES_NEXT;
         }
       };
 
@@ -390,7 +423,7 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return FeatureSet.latest();
         }
       };
 
@@ -407,7 +440,7 @@ public class TranspilationPasses {
 
         @Override
         protected FeatureSet featureSet() {
-          return ES8;
+          return FeatureSet.latest();
         }
       };
 

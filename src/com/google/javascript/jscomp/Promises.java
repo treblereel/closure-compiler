@@ -16,9 +16,13 @@
 
 package com.google.javascript.jscomp;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
+
+import com.google.common.collect.ImmutableList;
 import com.google.javascript.rhino.jstype.JSType;
 import com.google.javascript.rhino.jstype.JSTypeNative;
 import com.google.javascript.rhino.jstype.JSTypeRegistry;
+import com.google.javascript.rhino.jstype.ObjectType;
 import com.google.javascript.rhino.jstype.TemplateTypeMap;
 import com.google.javascript.rhino.jstype.UnionTypeBuilder;
 
@@ -41,8 +45,7 @@ final class Promises {
    */
   static final JSType getTemplateTypeOfThenable(JSTypeRegistry registry, JSType maybeThenable) {
     return maybeThenable
-        // TODO(lharker): if we ban declaring async functions to return nullable promises/thenables
-        // then we should remove this .restrictByNotNullOrUndefined()
+        // Without ".restrictByNotNullOrUndefined" we'd get the unknown type for "?IThenable<null>"
         .restrictByNotNullOrUndefined()
         .getInstantiatedTypeArgument(registry.getNativeType(JSTypeNative.I_THENABLE_TYPE));
   }
@@ -70,8 +73,8 @@ final class Promises {
     }
 
     if (type.isUnionType()) {
-      UnionTypeBuilder unionTypeBuilder = new UnionTypeBuilder(registry);
-      for (JSType alternate : type.toMaybeUnionType().getAlternatesWithoutStructuralTyping()) {
+      UnionTypeBuilder unionTypeBuilder = UnionTypeBuilder.create(registry);
+      for (JSType alternate : type.toMaybeUnionType().getAlternates()) {
         unionTypeBuilder.addAlternate(getResolvedType(registry, alternate));
       }
       return unionTypeBuilder.build();
@@ -89,6 +92,77 @@ final class Promises {
           registry, templates.getResolvedTemplateType(registry.getIThenableTemplate()));
     }
 
+    // Awaiting anything with a ".then" property (other than IThenable, handled above) should return
+    // unknown, rather than the type itself.
+    if (type.isSubtypeOf(registry.getNativeType(JSTypeNative.THENABLE_TYPE))) {
+      return registry.getNativeType(JSTypeNative.UNKNOWN_TYPE);
+    }
+
     return type;
+  }
+
+  /**
+   * Wraps the given type in an IThenable.
+   *
+   * <p>If the given type is already IThenable it is first unwrapped. For example:
+   *
+   * <p>{@code number} becomes {@code IThenable<number>}
+   *
+   * <p>{@code IThenable<number>} becomes {@code IThenable<number>}
+   *
+   * <p>{@code Promise<number>} becomes {@code IThenable<number>}
+   *
+   * <p>{@code IThenable<number>|string} becomes {@code IThenable<number|string>}
+   *
+   * <p>{@code IThenable<number>|IThenable<string>} becomes {@code IThenable<number|string>}
+   */
+  static final JSType wrapInIThenable(JSTypeRegistry registry, JSType maybeThenable) {
+    // Unwrap for simplicity first in the event it is a thenable.
+    JSType unwrapped = getResolvedType(registry, maybeThenable);
+    return registry.createTemplatizedType(
+        registry.getNativeObjectType(JSTypeNative.I_THENABLE_TYPE), unwrapped);
+  }
+
+  /**
+   * Synthesizes a type representing the legal types of a return expression within async code
+   * (i.e.`Promise` callbacks, async functions) based on the expected return type of that code.
+   *
+   * <p>The return type will generally be a union but may not be in the case of top-like types. If
+   * the expected return type is a union, any synchronous elements will be dropped, since they can
+   * never occur. For example:
+   *
+   * <ul>
+   *   <li>`!Promise<number>` => `number|!IThenable<number>`
+   *   <li>`number` => `?`
+   *   <li>`number|!Promise<string>` => `string|!IThenable<string>`
+   *   <li>`!IThenable<number>|!Promise<string>` => `number|string|!IThenable<number|string>`
+   *   <li>`!IThenable<number|string>` => `number|string|!IThenable<number|string>`
+   *   <li>`?` => `?`
+   *   <li>`*` => `?`
+   * </ul>
+   */
+  static final JSType createAsyncReturnableType(JSTypeRegistry registry, JSType maybeThenable) {
+    JSType unknownType = registry.getNativeType(JSTypeNative.UNKNOWN_TYPE);
+    ObjectType iThenableType = registry.getNativeObjectType(JSTypeNative.I_THENABLE_TYPE);
+
+    JSType iThenableOfUnknownType = registry.createTemplatizedType(iThenableType, unknownType);
+
+    ImmutableList<JSType> alternates =
+        maybeThenable.isUnionType()
+            ? maybeThenable.toMaybeUnionType().getAlternates()
+            : ImmutableList.of(maybeThenable);
+    ImmutableList<JSType> asyncTemplateAlternates =
+        alternates.stream()
+            .filter((t) -> t.isSubtypeOf(iThenableOfUnknownType)) // Discard "synchronous" types.
+            .map((t) -> getTemplateTypeOfThenable(registry, t)) // Unwrap "asynchronous" types.
+            .collect(toImmutableList());
+
+    if (asyncTemplateAlternates.isEmpty()) {
+      return unknownType;
+    }
+
+    JSType asyncTemplateUnion = registry.createUnionType(asyncTemplateAlternates);
+    return registry.createUnionType(
+        asyncTemplateUnion, registry.createTemplatizedType(iThenableType, asyncTemplateUnion));
   }
 }

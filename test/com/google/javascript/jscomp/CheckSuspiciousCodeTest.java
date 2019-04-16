@@ -16,11 +16,16 @@
 
 package com.google.javascript.jscomp;
 
-import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+import static com.google.javascript.jscomp.CheckSuspiciousCode.SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR;
 
-/**
- * Tests for CheckSuspiciousCode
- */
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
+
+/** Tests for CheckSuspiciousCode */
+@RunWith(JUnit4.class)
 public final class CheckSuspiciousCodeTest extends CompilerTestCase {
 
   @Override
@@ -30,9 +35,10 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
   }
 
   @Override
-  protected void setUp() throws Exception {
+  @Before
+  public void setUp() throws Exception {
     super.setUp();
-    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2017);
+    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2018);
     enableParseTypeInfo();
   }
 
@@ -41,6 +47,7 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     return 1;
   }
 
+  @Test
   public void testSuspiciousSemi() {
     final DiagnosticType e = CheckSuspiciousCode.SUSPICIOUS_SEMICOLON;
 
@@ -70,8 +77,13 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     testSame("var y = [1, 2, 3]; for(x of y) console.log(x);");
     testWarning("var y = [1, 2, 3]; for(x of y); console.log(x);", e);
     testSame("var y = [1, 2, 3]; for(x of y){} console.log(x);");
+
+    testSame("async () => { var y = [1, 2, 3]; for await (x of y) console.log(x); }");
+    testWarning("async () => { var y = [1, 2, 3]; for await (x of y); console.log(x); }", e);
+    testSame("async () => { var y = [1, 2, 3]; for await (x of y){} console.log(x); }");
   }
 
+  @Test
   public void testSuspiciousIn() {
     testWarning("'foo' in 1", CheckSuspiciousCode.SUSPICIOUS_IN_OPERATOR);
     testWarning("'foo' in 'test'", CheckSuspiciousCode.SUSPICIOUS_IN_OPERATOR);
@@ -86,6 +98,7 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     testSame("'foo' in {}");
   }
 
+  @Test
   public void testForOf() {
     testSame("var y = [1, 2, 3]; for (var x of y) console.log(x);");
     testSame("var y = [1, 2, 3]; for (var x of 'test') console.log(x);");
@@ -98,10 +111,24 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     testSame("for (var x of null) console.log(x);");
   }
 
+  @Test
+  public void testForAwaitOf() {
+    testSame("async () => { var y = [1, 2, 3]; for await (var x of y) console.log(x); }");
+    testSame("async () => { var y = [1, 2, 3]; for await (var x of 'test') console.log(x); }");
+    testSame("async () => { for await (var x of 123) console.log(x); }");
+    testSame("async () => { for await (var x of false) console.log(x); }");
+    testSame("async () => { for await (var x of true) console.log(x); }");
+    testSame("async () => { for await (var x of undefined) console.log(x); }");
+    testSame("async () => { for await (var x of NaN) console.log(x); }");
+    testSame("async () => { for await (var x of Infinity) console.log(x); }");
+    testSame("async () => { for await (var x of null) console.log(x); }");
+  }
+
   private void testReportNaN(String js) {
     testWarning(js, CheckSuspiciousCode.SUSPICIOUS_COMPARISON_WITH_NAN);
   }
 
+  @Test
   public void testComparison1() {
     testReportNaN("x == NaN");
     testReportNaN("x != NaN");
@@ -113,6 +140,7 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     testReportNaN("x >= NaN");
   }
 
+  @Test
   public void testComparison2() {
     testReportNaN("NaN == x");
     testReportNaN("NaN != x");
@@ -124,6 +152,7 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     testReportNaN("NaN >= x");
   }
 
+  @Test
   public void testComparison3() {
     testReportNaN("x == 0/0");
     testReportNaN("x != 0/0");
@@ -135,6 +164,7 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     testReportNaN("x >= 0/0");
   }
 
+  @Test
   public void testComparison4() {
     testReportNaN("0/0 == x");
     testReportNaN("0/0 != x");
@@ -146,6 +176,31 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
     testReportNaN("0/0 >= x");
   }
 
+  @Test
+  public void testComparison5() {
+    testReportNaN("x == Number.NaN");
+    testReportNaN("x != Number.NaN");
+    testReportNaN("x === Number.NaN");
+    testReportNaN("x !== Number.NaN");
+    testReportNaN("x < Number.NaN");
+    testReportNaN("x <= Number.NaN");
+    testReportNaN("x > Number.NaN");
+    testReportNaN("x >= Number.NaN");
+  }
+
+  @Test
+  public void testComparison6() {
+    testReportNaN("Number.NaN == x");
+    testReportNaN("Number.NaN != x");
+    testReportNaN("Number.NaN === x");
+    testReportNaN("Number.NaN !== x");
+    testReportNaN("Number.NaN < x");
+    testReportNaN("Number.NaN <= x");
+    testReportNaN("Number.NaN > x");
+    testReportNaN("Number.NaN >= x");
+  }
+
+  @Test
   public void testInstanceOf() {
     testReportInstanceOf("''", "String");
     testReportInstanceOf("4", "Number");
@@ -210,10 +265,183 @@ public final class CheckSuspiciousCodeTest extends CompilerTestCase {
         CheckSuspiciousCode.SUSPICIOUS_INSTANCEOF_LEFT_OPERAND);
   }
 
+  @Test
   public void testCheckNegatedLeftOperandOfInOperator() {
     testSame("if (!(x in y)) {}");
     testSame("if (('' + !x) in y) {}");
     testWarning(
         "if (!x in y) {}", CheckSuspiciousCode.SUSPICIOUS_NEGATED_LEFT_OPERAND_OF_IN_OPERATOR);
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator() {
+    testSame("if (x && y) {}");
+    testWarning("if (false && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (true && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (false || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (true || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (0 || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (null && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (NaN || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if ({} && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (void x && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+
+    testWarning("if (x || true || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning("if (x && false || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testSame("if (x || false || y) {}");
+    testSame("if (x && true || y) {}");
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator_typeBased() {
+    enableTypeCheck();
+    String prefix =
+        lines(
+            "/** @return {!Object} */ function truthy() { return {}; }",
+            "/** @return {null|undefined} */ function falsy() { return null; }",
+            "/** @return {number} */ function number() { return 42; }",
+            "/** @return {?} */ function unknown() { return 42; }",
+            "/** @const */ var ns = {};",
+            "/** @type {!Object<!Object>} */ ns.truthy = {};",
+            "/** @type {null} */ ns.falsy = null;",
+            "");
+
+    testSame("var x = x || {};");
+    testSame(prefix + "if (number() && y) {}");
+    testSame(prefix + "if (unknown() && y) {}");
+    testSame(prefix + "if (ns.truthy && y) {}");
+    testSame(prefix + "if (ns.falsy && y) {}");
+    testSame(prefix + "if (!ns.truthy && y) {}");
+    testSame(prefix + "if (!ns.falsy && y) {}");
+
+    testSame(prefix + "if (number() || y) {}");
+    testSame(prefix + "if (unknown() || y) {}");
+    testSame(prefix + "if (ns.truthy || y) {}");
+    testSame(prefix + "if (ns.falsy || y) {}");
+    testSame(prefix + "if (!ns.truthy || y) {}");
+    testSame(prefix + "if (!ns.falsy || y) {}");
+
+    testSame(prefix + "if (ns.falsy || ns.truthy || y) {}");
+    testSame(prefix + "if (ns.falsy && ns.truthy || y) {}");
+    testSame(prefix + "if (ns.truthy[ns.truthy] || y) {}");
+    testSame(prefix + "if (ns.truthy[truthy()] || y) {}");
+    testSame(prefix + "if ((truthy(), !ns.falsy) || y) {}");
+
+    // It's always okay to second-guess a type-based always-truthy.
+    testSame(prefix + "if (truthy() && y) {}");
+    testSame(prefix + "if (!truthy() && y) {}");
+    testSame(prefix + "if (truthy() || y) {}");
+    testSame(prefix + "if (!truthy() || y) {}");
+
+    testWarning(prefix + "if (falsy() && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning(prefix + "if (!falsy() && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning(prefix + "if (falsy() || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning(prefix + "if (!falsy() || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+
+    testWarning(
+        prefix + "if ((truthy(), !falsy()) || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator_guardedInitialization_noWarning() {
+    // In this example, 'x' is provably falsy, but it's a common pattern to initialize a global
+    // variable that may already exist before the script began.
+    enableTypeCheck();
+    testSame("var x = x || {};");
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator_truthyFunctionCalls_noWarning() {
+    // There are commonplace examples where functions that are annotated to return truthy results
+    // are actually lying, so we need to back off from warning about these.
+    enableTypeCheck();
+    String prefix = "/** @return {!Object} */ function truthy() { return {}; }\n";
+    testSame(prefix + "if (truthy() && y) {}");
+    testSame(prefix + "if (!truthy() && y) {}");
+    testSame(prefix + "if (truthy() || y) {}");
+    testSame(prefix + "if (!truthy() || y) {}");
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator_qualifiedName_noWarning() {
+    // Type information on qualified names can be wrong in both directions (e.g. an extern might
+    // assert that a name exists, but code must still verify to be sure).
+    enableTypeCheck();
+    String prefix =
+        lines(
+            "/** @const */ var ns = {};",
+            "/** @type {!Object<!Object>} */ ns.truthy = {};",
+            "/** @type {null} */ ns.falsy = null;",
+            "");
+    testSame(prefix + "if (ns.truthy && y) {}");
+    testSame(prefix + "if (ns.falsy && y) {}");
+    testSame(prefix + "if (!ns.truthy && y) {}");
+    testSame(prefix + "if (!ns.falsy && y) {}");
+    testSame(prefix + "if (ns.truthy || y) {}");
+    testSame(prefix + "if (ns.falsy || y) {}");
+    testSame(prefix + "if (!ns.truthy || y) {}");
+    testSame(prefix + "if (!ns.falsy || y) {}");
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator_primitiveOrUnknownTypes_noWarning() {
+    // Primitive types (like number) and unknown types can be either true or false, so don't warn.
+    enableTypeCheck();
+    String prefix =
+        lines(
+            "/** @return {number} */ function number() { return 42; }",
+            "/** @return {?} */ function unknown() { return 42; }",
+            "");
+    testSame(prefix + "if (number() && y) {}");
+    testSame(prefix + "if (unknown() && y) {}");
+    testSame(prefix + "if (number() || y) {}");
+    testSame(prefix + "if (unknown() || y) {}");
+    testSame(prefix + "if (!number() && y) {}");
+    testSame(prefix + "if (!unknown() && y) {}");
+    testSame(prefix + "if (!number() || y) {}");
+    testSame(prefix + "if (!unknown() || y) {}");
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator_deeperNesting() {
+    enableTypeCheck();
+    String prefix =
+        lines(
+            "/** @return {!Object} */ function truthy() { return {}; }",
+            "function falsy() { return; }",
+            "/** @const */ var ns = {};",
+            "/** @type {!Object<!Object>} */ ns.truthy = {};",
+            "/** @type {null} */ ns.falsy = null;",
+            "");
+
+    // When the above constructs (that don't warn) are combined more deeply, they still don't warn.
+    testSame(prefix + "if (ns.falsy || ns.truthy || y) {}");
+    testSame(prefix + "if (ns.falsy && ns.truthy || y) {}");
+    testSame(prefix + "if (ns.truthy[ns.truthy] || y) {}");
+    testSame(prefix + "if (ns.truthy[truthy()] || y) {}");
+
+    // Comma operator only recurses into RHS, so the truthy() below is ignored.
+    testSame(prefix + "if ((truthy(), !ns.falsy) || y) {}");
+
+    // But if the RHS of the comma would normally warn, then we should warn on the comma, too.
+    testWarning(
+        prefix + "if ((truthy(), falsy()) || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+  }
+
+  @Test
+  public void testSuspiciousLeftArgumentOfLogicalOperator_falsyFunctionCalls_warn() {
+    // Falsy function call results are less likely to be a false positive, since there are far
+    // fewer lies about them in the wild.
+    enableTypeCheck();
+    String prefix =
+        lines(
+            "/** @return {!Object} */ function truthy() { return {}; }",
+            "function falsy() { return; }",
+            "");
+
+    testWarning(prefix + "if (falsy() && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning(prefix + "if (!falsy() && y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning(prefix + "if (falsy() || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
+    testWarning(prefix + "if (!falsy() || y) {}", SUSPICIOUS_LEFT_OPERAND_OF_LOGICAL_OPERATOR);
   }
 }

@@ -26,60 +26,52 @@
 // should be used with an explicit Window object.
 
 /**
- * @type {!Window}
+ * @const {!Window}
  * @see https://developer.mozilla.org/en/DOM/window.top
- * @const
  */
 var top;
 
 /**
- * @type {!Navigator}
+ * @const {!Navigator}
  * @see https://developer.mozilla.org/en/DOM/window.navigator
- * @const
  */
 var navigator;
 
 /**
- * @type {!HTMLDocument}
+ * @const {!HTMLDocument}
  * @see https://developer.mozilla.org/en/DOM/window.document
- * @const
  */
 var document;
 
 /**
- * @type {!Location}
+ * @const {!Location}
  * @see https://developer.mozilla.org/en/DOM/window.location
- * @const
  * @suppress {duplicate}
  * @implicitCast
  */
 var location;
 
 /**
- * @type {!Screen}
+ * @const {!Screen}
  * @see https://developer.mozilla.org/En/DOM/window.screen
- * @const
  */
 var screen;
 
 /**
- * @type {!Window}
+ * @const {!Window}
  * @see https://developer.mozilla.org/En/DOM/Window.self
- * @const
  */
 var self;
 
 /**
- * @type {boolean}
+ * @const {boolean}
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/isSecureContext
- * @const
  */
 var isSecureContext;
 
 /**
- * @type {!VisualViewport}
+ * @const {!VisualViewport}
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/visualViewport
- * @const
  */
 var visualViewport;
 
@@ -181,32 +173,32 @@ function prompt(message, opt_value) {}
 
 /**
  * @param {function()} callback
- * @param {...?} var_args
+ * @param {...?} callbackParams
  * @return {number}
  * @see https://developer.mozilla.org/en-US/docs/DOM/window.setImmediate
  * @see http://msdn.microsoft.com/en-us/library/ie/hh773176(v=vs.85).aspx
  */
-function setImmediate(callback, var_args) {}
+function setImmediate(callback, callbackParams) {}
 
 /**
- * @param {Function|string} callback
+ * @param {Function|!TrustedScript|string} callback
  * @param {number=} opt_delay
- * @param {...?} var_args
+ * @param {...?} callbackParams
  * @return {number}
  * @see https://developer.mozilla.org/en/DOM/window.setInterval
  * @see https://html.spec.whatwg.org/multipage/webappapis.html#timers
  */
-function setInterval(callback, opt_delay, var_args) {}
+function setInterval(callback, opt_delay, callbackParams) {}
 
 /**
- * @param {Function|string} callback
+ * @param {Function|!TrustedScript|string} callback
  * @param {number=} opt_delay
- * @param {...*} var_args
+ * @param {...*} callbackParams
  * @return {number}
  * @see https://developer.mozilla.org/en/DOM/window.setTimeout
  * @see https://html.spec.whatwg.org/multipage/webappapis.html#timers
  */
-function setTimeout(callback, opt_delay, var_args) {}
+function setTimeout(callback, opt_delay, callbackParams) {}
 
 /**
  * Returns whether the object has a property with the specified name.

@@ -32,61 +32,61 @@
 function DOMException(message, name) {}
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.INDEX_SIZE_ERR = 1;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.DOMSTRING_SIZE_ERR = 2;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.HIERARCHY_REQUEST_ERR = 3;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.WRONG_DOCUMENT_ERR = 4;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.INVALID_CHARACTER_ERR = 5;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.NO_DATA_ALLOWED_ERR = 6;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.NO_MODIFICATION_ALLOWED_ERR = 7;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.NOT_FOUND_ERR = 8;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.NOT_SUPPORTED_ERR = 9;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-258A00AF
  */
 DOMException.INUSE_ATTRIBUTE_ERR = 10;
@@ -240,79 +240,73 @@ Node.prototype.removeChild = function(oldChild) {};
 Node.prototype.replaceChild = function(newChild, oldChild) {};
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.ATTRIBUTE_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.CDATA_SECTION_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.COMMENT_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.DOCUMENT_FRAGMENT_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.DOCUMENT_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.DOCUMENT_TYPE_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.ELEMENT_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.ENTITY_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.ENTITY_REFERENCE_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.PROCESSING_INSTRUCTION_NODE;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.TEXT_NODE;
 
 /**
- * @type {number}
- * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
- */
-Node.XPATH_NAMESPACE_NODE;
-
-/**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#ID-1950641247
  */
 Node.NOTATION_NODE;
@@ -453,8 +447,7 @@ NodeList.prototype.item = function(index) {};
 /**
  * @param {?function(this:S, T, number, !NodeList<T>): ?} callback
  * @param {S=} opt_thisobj
- * @this {NodeList<T>}
- * @template T,S
+ * @template S
  * @return {undefined}
  * @see https://developer.mozilla.org/en-US/docs/Web/API/NodeList/forEach
  */

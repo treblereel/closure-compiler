@@ -17,20 +17,25 @@
 package com.google.javascript.jscomp;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import com.google.javascript.jscomp.AbstractCompiler.LifeCycleStage;
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
 import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.rhino.Node;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import junit.framework.TestCase;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 /**
  * Tests for {@link MaybeReachingVariableUse}.
  *
  */
-public final class MaybeReachingVariableUseTest extends TestCase {
+@RunWith(JUnit4.class)
+public final class MaybeReachingVariableUseTest {
 
   private MaybeReachingVariableUse useDef = null;
   private Node def = null;
@@ -43,6 +48,7 @@ public final class MaybeReachingVariableUseTest extends TestCase {
    * with U is reachable to the definition label at D.
    */
 
+  @Test
   public void testStraightLine() {
     assertMatch("D:var x=1; U: x");
     assertMatch("var x; D:x=1; U: x");
@@ -52,12 +58,14 @@ public final class MaybeReachingVariableUseTest extends TestCase {
     assertMatch("D: var x = 1; var y = 2; y; U:x");
   }
 
+  @Test
   public void testIf() {
     assertMatch("var x; if(a){ D:x=1 }else { x=2 }; U:x");
     assertMatch("var x; if(a){ x=1 }else { D:x=2 }; U:x");
     assertMatch("D:var x=1; if(a){ U1: x }else { U2: x };");
   }
 
+  @Test
   public void testLoops() {
     assertMatch("var x=0; while(a){ D:x=1 }; U:x");
     assertNotMatch("var x=0; for(;;) { D:x=1 }; U:x");
@@ -68,6 +76,7 @@ public final class MaybeReachingVariableUseTest extends TestCase {
     assertMatch("D:var x=1; for(;;)  { U:x }");
   }
 
+  @Test
   public void testConditional() {
     assertMatch("var x=0; var y; D:(x=1)&&y; U:x");
     assertMatch("var x=0; var y; D:y&&(x=1); U:x");
@@ -78,32 +87,38 @@ public final class MaybeReachingVariableUseTest extends TestCase {
     assertMatch("D: var x=0; var y=0; (y=0)&&(x=1); U:x");
   }
 
+  @Test
   public void testUseAndDefInSameInstruction() {
     assertNotMatch("D:var x=0; U:x=1,x");
     assertMatch("D:var x=0; U:x,x=1");
   }
 
+  @Test
   public void testAssignmentInExpressions() {
     assertMatch("var x=0; D:foo(bar(x=1)); U:x");
     assertMatch("var x=0; D:foo(bar + (x = 1)); U:x");
   }
 
+  @Test
   public void testHook() {
     assertMatch("var x=0; D:foo() ? x=1 : bar(); U:x");
     assertMatch("var x=0; D:foo() ? x=1 : x=2; U:x");
   }
 
+  @Test
   public void testAssignmentOps() {
     assertNotMatch("D: var x = 0; U: x = 100");
     assertMatch("D: var x = 0; U: x += 100");
     assertMatch("D: var x = 0; U: x -= 100");
   }
 
+  @Test
   public void testInc() {
     assertMatch("D: var x = 0; U:x++");
     assertMatch("var x = 0; D:x++; U:x");
   }
 
+  @Test
   public void testForIn() {
     // Uses within FOR-IN header are hard to test. They are covered
     // by the tests in the flow sensitive inliner.
@@ -116,6 +131,7 @@ public final class MaybeReachingVariableUseTest extends TestCase {
     assertMatch("D: var x = 1, foo; U: x; for (let [x] in foo) {}");
   }
 
+  @Test
   public void testForOf() {
     assertNotMatch("D: var x = [], foo; U: for (x of foo) { }");
     assertNotMatch("D: var x = [], foo; for (x of foo) { U:x }");
@@ -126,6 +142,18 @@ public final class MaybeReachingVariableUseTest extends TestCase {
     assertMatch("D: var x = 1, foo; U: x; for (let [x] of foo) {}");
   }
 
+  @Test
+  public void testForAwaitOf() {
+    assertNotAsyncMatch("D: var x = [], foo; U: for await (x of foo) { }");
+    assertNotAsyncMatch("D: var x = [], foo; for await (x of foo) { U:x }");
+    assertAsyncMatch("var x = [], foo; D: for await (x of foo) { U:x }");
+    assertAsyncMatch("var foo; D: for await (let x of foo) { U:x }");
+    assertAsyncMatch("var foo; D: for await (const x of foo) { U:x }");
+    assertAsyncMatch("D: var x = 1, foo; U: x; U: for await (let [z = x] of foo) {}");
+    assertAsyncMatch("D: var x = 1, foo; U: x; for await (let [x] of foo) {}");
+  }
+
+  @Test
   public void testTryCatch() {
     assertMatch(""
         + "D: var x = 1; "
@@ -133,6 +161,7 @@ public final class MaybeReachingVariableUseTest extends TestCase {
         + "U: var z = x;");
   }
 
+  @Test
   public void testDestructuring() {
     assertMatch("D: var x = 1; U: var [y = x] = [];");
     assertMatch("D: var x = 1; var y; U: [y = x] = [];");
@@ -140,36 +169,48 @@ public final class MaybeReachingVariableUseTest extends TestCase {
     assertMatch("var x; x = 3; D: [x] = 5; U: x;");
   }
 
-  /**
-   * The def of x at D: may be used by the read of x at U:.
-   */
   private void assertMatch(String src) {
-    computeUseDef(src);
-    Collection<Node> result = useDef.getUses("x", def);
-    assertThat(result).hasSize(uses.size());
-    assertTrue(result.containsAll(uses));
+    assertMatch(src, false);
   }
 
-  /**
-   * The def of x at D: is not used by the read of x at U:.
-   */
+  private void assertAsyncMatch(String src) {
+    assertMatch(src, true);
+  }
+
+  /** The def of x at D: may be used by the read of x at U:. */
+  private void assertMatch(String src, boolean async) {
+    computeUseDef(src, async);
+    Collection<Node> result = useDef.getUses("x", def);
+    assertThat(result).containsAllIn(uses);
+  }
+
   private void assertNotMatch(String src) {
-    computeUseDef(src);
+    assertNotMatch(src, false);
+  }
+
+  private void assertNotAsyncMatch(String src) {
+    assertNotMatch(src, true);
+  }
+
+  /** The def of x at D: is not used by the read of x at U:. */
+  private void assertNotMatch(String src, boolean async) {
+    computeUseDef(src, async);
     assertThat(useDef.getUses("x", def)).doesNotContain(uses);
   }
 
-  /**
-   * Computes reaching use on given source.
-   */
-  private void computeUseDef(String src) {
+  /** Computes reaching use on given source. */
+  private void computeUseDef(String src, boolean async) {
     Compiler compiler = new Compiler();
     compiler.setLifeCycleStage(LifeCycleStage.NORMALIZED);
+    CompilerOptions options = new CompilerOptions();
+    options.setLanguageIn(LanguageMode.ECMASCRIPT_2018);
+    compiler.initOptions(options);
     Es6SyntacticScopeCreator scopeCreator = new Es6SyntacticScopeCreator(compiler);
-    src = "function _FUNCTION(param1, param2){" + src + "}";
+    src = (async ? "async " : "") + "function _FUNCTION(param1, param2){" + src + "}";
     Node script = compiler.parseTestCode(src);
     Node root = script.getFirstChild();
     Node functionBlock = root.getLastChild();
-    assertEquals(0, compiler.getErrorCount());
+    assertThat(compiler.getErrors()).isEmpty();
     Scope globalScope = scopeCreator.createScope(script, null);
     Scope functionScope = scopeCreator.createScope(root, globalScope);
     Scope funcBlockScope = scopeCreator.createScope(functionBlock, functionScope);
@@ -181,9 +222,10 @@ public final class MaybeReachingVariableUseTest extends TestCase {
     def = null;
     uses = new ArrayList<>();
     new NodeTraversal(compiler, new LabelFinder(), scopeCreator).traverse(root);
-    assertNotNull("Code should have an instruction labeled D", def);
-    assertFalse("Code should have an instruction labeled starting withing U",
-        uses.isEmpty());
+    assertWithMessage("Code should have an instruction labeled D").that(def).isNotNull();
+    assertWithMessage("Code should have an instruction labeled starting withing U")
+        .that(uses.isEmpty())
+        .isFalse();
   }
 
   /**

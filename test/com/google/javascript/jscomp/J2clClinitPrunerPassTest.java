@@ -16,8 +16,13 @@
 package com.google.javascript.jscomp;
 
 import com.google.common.collect.ImmutableList;
-import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
+@RunWith(JUnit4.class)
 public class J2clClinitPrunerPassTest extends CompilerTestCase {
 
   @Override
@@ -39,6 +44,16 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
     return 1;
   }
 
+  @Override
+  @Before
+  public void setUp() throws Exception {
+    super.setUp();
+
+    enableNormalize();
+    enableComputeSideEffects();
+  }
+
+  @Test
   public void testRemoveDuplicates() {
     test(
         lines(
@@ -56,6 +71,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRemoveDuplicates_commaExpressions() {
     test(
         lines(
@@ -74,6 +90,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRemoveDuplicates_controlBlocks() {
     test(
         lines(
@@ -92,6 +109,9 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "  var a = (someClass.$clinit(), true) ? (someClass.$clinit(), void 0) : void 0;",
             "  var b = function() { someClass.$clinit(); };",
             "  var c = function c() { someClass.$clinit(); };",
+            "  var d = function*() { someClass.$clinit(); };",
+            "  var e = async function() { someClass.$clinit(); };",
+            "  var f = () => { someClass.$clinit(); };",
             "  [].forEach(function() { someClass.$clinit(); });",
             "  someClass.$clinit();",
             "};"),
@@ -108,10 +128,14 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "  var a = (void 0, true) ? (void 0, void 0) : void 0;",
             "  var b = function() {};",
             "  var c = function c() {};",
+            "  var d = function*() {};",
+            "  var e = async function() {};",
+            "  var f = () => {};",
             "  [].forEach(function() {});",
             "};"));
   }
 
+  @Test
   public void testRemoveDuplicates_selfRemoval() {
     test(
         lines(
@@ -129,6 +153,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
         "function someClass$$0clinit() {}");
   }
 
+  @Test
   public void testRemoveDuplicates_jumpFunctionDeclarations() {
     test(
         lines(
@@ -147,6 +172,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "someClass.$clinit = function() {}",
             "someClass.someOtherFunction = function() {",
             "  myFunc();",
+            // Control flow analysis doesn't understand that this was already called in `myFunc`.
             "  someClass.$clinit();",
             "  function myFunc() {",
             "    someClass.$clinit();",
@@ -154,6 +180,25 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
+  public void testRemoveDuplicates_jumpDefaults() {
+    test(
+        lines(
+            "var someClass = {};",
+            "someClass.$clinit = function() {}",
+            "someClass.someOtherFunction = function(p=someClass.$clinit()) {",
+            "  var { x = someClass.$clinit() } = someClass.$clinit();",
+            "  someClass.$clinit();",
+            "};"),
+        lines(
+            "var someClass = {};",
+            "someClass.$clinit = function() {}",
+            "someClass.someOtherFunction = function(p=someClass.$clinit()) {",
+            "  var { x = someClass.$clinit() } = someClass.$clinit();",
+            "};"));
+  }
+
+  @Test
   public void testRemoveDuplicates_avoidControlBlocks() {
     testSame(
         lines(
@@ -185,10 +230,14 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "  }",
             "  var a = true ? (someClass.$clinit(), void 0) : void 0;",
             "  var b = function() { someClass.$clinit(); }",
+            "  var c = function*() { someClass.$clinit(); }",
+            "  var d = async function() { someClass.$clinit(); }",
+            "  var e = () => { someClass.$clinit(); }",
             "  someClass.$clinit();",
             "};"));
   }
 
+  @Test
   public void testRemoveDuplicates_avoidRemovalAcrossScriptRoots() {
     testSame(
         new FlatSources(
@@ -202,6 +251,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
                 SourceFile.fromCode("file2", lines("someClass.$clinit();")))));
   }
 
+  @Test
   public void testRedundantClinit_returnCtor() {
     test(
         lines(
@@ -221,6 +271,32 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Ignore("Improve look ahead pruner to handle ES6 classes")
+  @Test
+  public void testRedundantClinit_returnCtor_es6() {
+    test(
+        lines(
+            "class Foo {",
+            "  constructor(){",
+            "    Foo.$clinit();",
+            "  }",
+            "  static ctor() {",
+            "    Foo.$clinit();",
+            "    return new Foo();",
+            "  }",
+            "};"),
+        lines(
+            "class Foo {",
+            "  constructor(){",
+            "    Foo.$clinit();",
+            "  }",
+            "  static ctor() {",
+            "    return new Foo();",
+            "  }",
+            "};"));
+  }
+
+  @Test
   public void testRedundantClinit_returnCall() {
     test(
         lines(
@@ -240,6 +316,32 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Ignore("Improve look ahead pruner to handle ES6 classes")
+  @Test
+  public void testRedundantClinit_returnCall_es6() {
+    test(
+        lines(
+            "class Foo {",
+            "  static bar(){",
+            "    Foo.$clinit();",
+            "  }",
+            "  static zoo() {",
+            "    Foo.$clinit();",
+            "    return Foo.bar();",
+            "  }",
+            "};"),
+        lines(
+            "class Foo {",
+            "  static bar(){",
+            "    Foo.$clinit();",
+            "  }",
+            "  static zoo() {",
+            "    return bar();",
+            "  }",
+            "};"));
+  }
+
+  @Test
   public void testRedundantClinit_exprResult() {
     test(
         lines(
@@ -259,6 +361,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_var() {
     test(
         lines(
@@ -278,8 +381,8 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_let() {
-    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2015);
     test(
         lines(
             "var foo = function() {",
@@ -298,8 +401,8 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_const() {
-    setAcceptedLanguage(LanguageMode.ECMASCRIPT_2015);
     test(
         lines(
             "var foo = function() {",
@@ -318,6 +421,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_literalArgs() {
     test(
         lines(
@@ -337,6 +441,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_paramArgs() {
     test(
         lines(
@@ -356,6 +461,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_unsafeArgs() {
     testSame(
         lines(
@@ -369,6 +475,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_otherClinit() {
     testSame(
         lines(
@@ -381,6 +488,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_clinitNotFirstStatement() {
     testSame(
         lines(
@@ -394,6 +502,7 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testRedundantClinit_recursiveCall() {
     testSame(
         lines(
@@ -403,17 +512,36 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
-  public void testFoldClinit() {
+  @Test
+  public void testFoldClinit_es5() {
     test(
         lines(
             "var someClass = {};",
             "someClass.$clinit = function() {",
             "  someClass.$clinit = function() {};",
             "};"),
-        lines("var someClass = {};", "someClass.$clinit = function() {};"));
+        lines(
+            "var someClass = {};", //
+            "someClass.$clinit = function() {};"));
   }
 
-  public void testFoldClinit_classHierarchy() {
+  @Test
+  public void testFoldClinit_es6() {
+    test(
+        lines(
+            "class someClass {",
+            "  static $clinit() {",
+            "    someClass.$clinit = function() {};",
+            "  }",
+            "}"),
+        lines(
+            "class someClass {", //
+            "  static $clinit() {}",
+            "}"));
+  }
+
+  @Test
+  public void testFoldClinit_classHierarchy_es5() {
     test(
         lines(
             "var someClass = {};",
@@ -437,7 +565,39 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "someChildClass.someFunction = function() {};"));
   }
 
-  public void testFoldClinit_classHierarchyNonEmpty() {
+  @Test
+  public void testFoldClinit_classHierarchy_es6() {
+    test(
+        lines(
+            "class someClass {",
+            "  static $clinit() {",
+            "    someClass.$clinit = function() {};",
+            "  }",
+            "}",
+            "class someChildClass {",
+            "  static $clinit() {",
+            "    someChildClass.$clinit = function() {};",
+            "    someClass.$clinit();",
+            "  }",
+            "",
+            "  static someFunction() {",
+            "    someChildClass.$clinit();",
+            "    someClass.$clinit();",
+            "  }",
+            "}"),
+        lines(
+            "class someClass {",
+            "  static $clinit() {}",
+            "}",
+            "class someChildClass {",
+            "  static $clinit() {}",
+            "",
+            "  static someFunction() {}",
+            "}"));
+  }
+
+  @Test
+  public void testFoldClinit_classHierarchyNonEmpty_es5() {
     test(
         lines(
             "var someClass = {};",
@@ -468,7 +628,46 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "};"));
   }
 
-  public void testFoldClinit_invalidCandidates() {
+  @Test
+  public void testFoldClinit_classHierarchyNonEmpty_es6() {
+    test(
+        lines(
+            "class someClass {",
+            "  static $clinit() {",
+            "    someClass.$clinit = function() {};",
+            "    somefn();",
+            "  }",
+            "}",
+            "class someChildClass {",
+            "  static $clinit() {",
+            "    someChildClass.$clinit = function() {};",
+            "    someClass.$clinit();",
+            "  }",
+            "",
+            "  static someFunction() {",
+            "    someChildClass.$clinit();",
+            "  }",
+            "}"),
+        lines(
+            "class someClass {",
+            "  static $clinit() {",
+            "    someClass.$clinit = function() {};",
+            "    somefn();",
+            "  }",
+            "}",
+            "class someChildClass {",
+            "  static $clinit() {",
+            "    someClass.$clinit();",
+            "  }",
+            "",
+            "  static someFunction() {",
+            "    someClass.$clinit();",
+            "  }",
+            "}"));
+  }
+
+  @Test
+  public void testFoldClinit_invalidCandidates_es5() {
     testSame(
         lines(
             "var someClass = /** @constructor */ function() {};",
@@ -489,5 +688,33 @@ public class J2clClinitPrunerPassTest extends CompilerTestCase {
             "someClass.$notClinit = function() {",
             "  someClass.$notClinit = function() {};",
             "};"));
+  }
+
+  @Test
+  public void testFoldClinit_invalidCandidates_es6() {
+    testSame(
+        lines(
+            "class someClass {",
+            "  static foo() {}",
+            "  static $clinit() {",
+            "    someClass.$clinit = function() {};",
+            "    someClass.foo();",
+            "  }",
+            "}"));
+    testSame(
+        lines(
+            "class someClass {",
+            "  static $clinit() {",
+            "    otherClass.$clinit = function() {};",
+            "  }",
+            "}",
+            "class otherClass {}"));
+    testSame(
+        lines(
+            "class someClass {",
+            "  static $notClinit() {",
+            "    someClass.$notClinit = function() {};",
+            "  }",
+            "}"));
   }
 }

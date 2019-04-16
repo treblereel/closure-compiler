@@ -9,8 +9,7 @@ The [Closure Compiler](https://developers.google.com/closure/compiler/) is a too
  * [Download the latest version](https://dl.google.com/closure-compiler/compiler-latest.zip) ([Release details here](https://github.com/google/closure-compiler/wiki/Releases))
  * [Download a specific version](https://github.com/google/closure-compiler/wiki/Binary-Downloads). Also available via:
    - [Maven](https://github.com/google/closure-compiler/wiki/Maven)
-   - [NPM](https://www.npmjs.com/package/google-closure-compiler)
- * [Use the JavaScript version](https://github.com/google/closure-compiler-js), with no Java dependency
+   - [NPM](https://www.npmjs.com/package/google-closure-compiler) - includes java, native and javascript versions.
  * See the [Google Developers Site](https://developers.google.com/closure/compiler/docs/gettingstarted_app) for documentation including instructions for running the compiler from the command line.
 
 ## Options for Getting Help
@@ -27,7 +26,7 @@ Note: The Closure Compiler requires [Java 8 or higher](https://www.java.com/).
 1. Download [Maven](https://maven.apache.org/download.cgi).
 
 2. Add sonatype snapshots repository to `~/.m2/settings.xml`:
-   ```
+   ```xml
    <profile>
      <id>allow-snapshots</id>
         <activation><activeByDefault>true</activeByDefault></activation>
@@ -62,7 +61,7 @@ unit tests too).
 6. Disregard the warnings about maven-antrun-plugin and build errors.
 7. Configure the project to use the [Google Eclipse style guide](https://github.com/google/styleguide/blob/gh-pages/eclipse-java-google-style.xml)
 8. Edit `.classpath` in closure-compiler-parent. Delete the `<classpathentry ... kind="src" path="src" ... />` line, then add:
-   ```
+   ```xml
    <classpathentry excluding="com/google/debugging/sourcemap/super/**|com/google/javascript/jscomp/debugger/gwt/DebuggerGwtMain.java|com/google/javascript/jscomp/gwt/|com/google/javascript/jscomp/resources/super-gwt/**" kind="src" path="src"/>
    <classpathentry kind="src" path="target/generated-sources/annotations"/>
    ```
@@ -145,6 +144,7 @@ will re-order the inputs automatically.
  * Check the [official documentation](https://developers.google.com/closure/compiler/)
  * Consult the [FAQ](https://github.com/google/closure-compiler/wiki/FAQ)
  * Search on [Stack Overflow](https://stackoverflow.com/questions/tagged/google-closure-compiler) and in the [Closure Compiler Discuss Group](https://groups.google.com/forum/#!forum/closure-compiler-discuss)
+ * Look through the list of [compiler assumptions](https://github.com/google/closure-compiler/wiki/Compiler-Assumptions).
 2. If you still think you have found a bug, make sure someone hasn't already reported it. See the list of [known issues](https://github.com/google/closure-compiler/issues).
 3. If it hasn't been reported yet, post a new issue. Make sure to add enough detail so that the bug can be recreated. The smaller the reproduction code, the better.
 
@@ -497,5 +497,38 @@ without make's wrinkles and with the full portability of pure java code.</td>
   <tr>
     <td>Local Modifications</td>
     <td>Substantial changes to make them compatible with NpmCommandLineRunner.</td>
+  </tr>
+</table>
+
+
+<table>
+  <tr>
+    <td>Code Path</td>
+    <td><code>contrib/externs/nodejs</code></td>
+  </tr>
+
+  <tr>
+    <td>URL</td>
+    <td>https://www.github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node/v8</td>
+  </tr>
+
+  <tr>
+    <td>Version</td>
+    <td>(best guess) 27e260259ec83211b0cc59043988f124e9a42b20</td>
+  </tr>
+
+  <tr>
+    <td>License</td>
+    <td>MIT</td>
+  </tr>
+
+  <tr>
+    <td>Description</td>
+    <td>Type contracts for NodeJS APIs</td>
+  </tr>
+
+  <tr>
+    <td>Local Modifications</td>
+    <td>externs.js file is generated from index.ts using https://github.com/angular/tsickle</td>
   </tr>
 </table>

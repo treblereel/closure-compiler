@@ -18,6 +18,7 @@ package com.google.javascript.jscomp.ijs;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Strings.isNullOrEmpty;
 
 import com.google.javascript.jscomp.NodeUtil;
 import com.google.javascript.rhino.JSDocInfo;
@@ -50,7 +51,7 @@ final class ClassUtil {
       return null;
     }
     String className = getClassName(function);
-    if (className == null || className.isEmpty()) {
+    if (isNullOrEmpty(className)) {
       return null;
     }
     return className;
@@ -112,7 +113,10 @@ final class ClassUtil {
 
   static boolean isConstructor(Node functionNode) {
     if (isClassMethod(functionNode)) {
-      return "constructor".equals(functionNode.getParent().getString());
+      return NodeUtil.isEs6Constructor(functionNode)
+          ||
+          // TODO(b/124020008): Delete this case when `goog.defineClass` is dropped.
+          "constructor".equals(functionNode.getParent().getString());
     }
     JSDocInfo jsdoc = NodeUtil.getBestJSDocInfo(functionNode);
     return jsdoc != null && jsdoc.isConstructor();

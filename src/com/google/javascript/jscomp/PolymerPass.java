@@ -24,7 +24,7 @@ import static com.google.javascript.jscomp.PolymerPassErrors.POLYMER_MISSING_EXT
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
+import com.google.javascript.jscomp.NodeTraversal.ExternsSkippingCallback;
 import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.JSDocInfo;
 import com.google.javascript.rhino.JSDocInfoBuilder;
@@ -44,12 +44,13 @@ import java.util.Set;
  *
  * @author jlklein@google.com (Jeremy Klein)
  */
-final class PolymerPass extends AbstractPostOrderCallback implements HotSwapCompilerPass {
+final class PolymerPass extends ExternsSkippingCallback implements HotSwapCompilerPass {
   private static final String VIRTUAL_FILE = "<PolymerPass.java>";
 
   private final AbstractCompiler compiler;
   private final ImmutableMap<String, String> tagNameMap;
   private final int polymerVersion;
+  private final PolymerExportPolicy polymerExportPolicy;
   private final boolean propertyRenamingEnabled;
 
   private Node polymerElementExterns;
@@ -58,8 +59,13 @@ final class PolymerPass extends AbstractPostOrderCallback implements HotSwapComp
   private ImmutableList<Node> polymerElementProps;
   private GlobalNamespace globalNames;
   private boolean warnedPolymer1ExternsMissing = false;
+  private boolean propertySinkExternInjected = false;
 
-  PolymerPass(AbstractCompiler compiler, Integer polymerVersion, boolean propertyRenamingEnabled) {
+  PolymerPass(
+      AbstractCompiler compiler,
+      Integer polymerVersion,
+      PolymerExportPolicy polymerExportPolicy,
+      boolean propertyRenamingEnabled) {
     checkArgument(
         polymerVersion == null || polymerVersion == 1 || polymerVersion == 2,
         "Invalid Polymer version:",
@@ -68,6 +74,8 @@ final class PolymerPass extends AbstractPostOrderCallback implements HotSwapComp
     tagNameMap = TagNameToType.getMap();
     nativeExternsAdded = new HashSet<>();
     this.polymerVersion = polymerVersion == null ? 1 : polymerVersion;
+    this.polymerExportPolicy =
+        polymerExportPolicy == null ? PolymerExportPolicy.LEGACY : polymerExportPolicy;
     this.propertyRenamingEnabled = propertyRenamingEnabled;
   }
 
@@ -80,7 +88,7 @@ final class PolymerPass extends AbstractPostOrderCallback implements HotSwapComp
 
     if (polymerVersion == 1 && polymerElementExterns == null) {
       this.warnedPolymer1ExternsMissing = true;
-      compiler.report(JSError.make(externs, POLYMER_MISSING_EXTERNS));
+      compiler.report(JSError.make(POLYMER_MISSING_EXTERNS));
       return;
     }
 
@@ -90,7 +98,8 @@ final class PolymerPass extends AbstractPostOrderCallback implements HotSwapComp
 
     globalNames = new GlobalNamespace(compiler, externs, root);
 
-    hotSwapScript(root, null);
+    Node externsAndJsRoot = root.getParent();
+    hotSwapScript(externsAndJsRoot, null);
   }
 
   @Override
@@ -109,7 +118,7 @@ final class PolymerPass extends AbstractPostOrderCallback implements HotSwapComp
       if (polymerElementExterns != null) {
         rewritePolymer1ClassDefinition(node, parent, traversal);
       } else if (!warnedPolymer1ExternsMissing) {
-        compiler.report(JSError.make(polymerElementExterns, POLYMER_MISSING_EXTERNS));
+        compiler.report(JSError.make(node, POLYMER_MISSING_EXTERNS));
         warnedPolymer1ExternsMissing = true;
       }
     } else if (PolymerPassStaticUtils.isPolymerClass(node)) {
@@ -132,7 +141,11 @@ final class PolymerPass extends AbstractPostOrderCallback implements HotSwapComp
       }
       PolymerClassRewriter rewriter =
           new PolymerClassRewriter(
-              compiler, getExtensInsertionRef(), polymerVersion, this.propertyRenamingEnabled);
+              compiler,
+              getExtensInsertionRef(),
+              polymerVersion,
+              polymerExportPolicy,
+              this.propertyRenamingEnabled);
       if (NodeUtil.isNameDeclaration(grandparent) || parent.isAssign()) {
         rewriter.rewritePolymerCall(grandparent, def, traversal.inGlobalScope());
       } else {
@@ -148,8 +161,14 @@ final class PolymerPass extends AbstractPostOrderCallback implements HotSwapComp
     if (def != null) {
       PolymerClassRewriter rewriter =
           new PolymerClassRewriter(
-              compiler, getExtensInsertionRef(), polymerVersion, this.propertyRenamingEnabled);
-      rewriter.rewritePolymerClassDeclaration(node, def, traversal.inGlobalScope());
+              compiler,
+              getExtensInsertionRef(),
+              polymerVersion,
+              polymerExportPolicy,
+              this.propertyRenamingEnabled);
+      rewriter.propertySinkExternInjected = propertySinkExternInjected;
+      rewriter.rewritePolymerClassDeclaration(node, traversal, def);
+      propertySinkExternInjected = rewriter.propertySinkExternInjected;
     }
   }
 

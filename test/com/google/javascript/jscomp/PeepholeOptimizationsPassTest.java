@@ -25,11 +25,15 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 /**
  * Unit tests for PeepholeOptimizationsPass.
  *
  */
+@RunWith(JUnit4.class)
 public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
 
   private ImmutableList<AbstractPeepholeOptimization> currentPeepholePasses;
@@ -47,15 +51,16 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
   }
 
   /**
-   * PeepholeOptimizationsPass should handle the case when no peephole
-   * optimizations are turned on.
+   * PeepholeOptimizationsPass should handle the case when no peephole optimizations are turned on.
    */
+  @Test
   public void testEmptyPass() {
     currentPeepholePasses = ImmutableList.of();
 
     testSame("var x; var y;");
   }
 
+  @Test
   public void testOptimizationOrder() {
     /*
      * We need to make sure that: 1) We are only traversing the AST once 2) For
@@ -133,7 +138,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
         }
 
         for (Node childToRemove : nodesToRemove) {
-          compiler.reportChangeToEnclosingScope(node);
+          reportChangeToEnclosingScope(node);
           node.removeChild(childToRemove);
         }
       }
@@ -151,7 +156,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
     @Override
     public Node optimizeSubtree(Node node) {
       if (node.isName() && "x".equals(node.getString())) {
-        compiler.reportChangeToEnclosingScope(node);
+        reportChangeToEnclosingScope(node);
         node.detach();
 
         return null;
@@ -172,7 +177,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
       if (node.isName() && "x".equals(node.getString())) {
         Node parent = node.getParent();
         if (parent.isVar()) {
-          compiler.reportChangeToEnclosingScope(parent);
+          reportChangeToEnclosingScope(parent);
           parent.detach();
           return null;
         }
@@ -192,7 +197,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
         Node replacement = Node.newString(Token.NAME, "x");
 
         node.replaceWith(replacement);
-        compiler.reportChangeToEnclosingScope(replacement);
+        reportChangeToEnclosingScope(replacement);
 
         return replacement;
       }
@@ -200,6 +205,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
     }
   }
 
+  @Test
   public void testOptimizationRemovingSubtreeChild() {
     currentPeepholePasses = ImmutableList.<AbstractPeepholeOptimization>of(new
           RemoveNodesNamedXUnderVarOptimization());
@@ -209,6 +215,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
     test("var x,y,x;", "var y;");
   }
 
+  @Test
   public void testOptimizationRemovingSubtree() {
     currentPeepholePasses = ImmutableList.<AbstractPeepholeOptimization>of(new
           RemoveNodesNamedXOptimization());
@@ -218,6 +225,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
     test("var x,y,x;", "var y;");
   }
 
+  @Test
   public void testOptimizationRemovingSubtreeParent() {
     currentPeepholePasses = ImmutableList.<AbstractPeepholeOptimization>of(new
           RemoveParentVarsForNodesNamedX());
@@ -226,9 +234,10 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
   }
 
   /**
-   * Test the case where the first peephole optimization removes a node and the
-   * second wants to remove (the now nonexistent) parent of that node.
+   * Test the case where the first peephole optimization removes a node and the second wants to
+   * remove (the now nonexistent) parent of that node.
    */
+  @Test
   public void testOptimizationsRemoveParentAfterRemoveChild() {
     currentPeepholePasses = ImmutableList.of(
         new RemoveNodesNamedXOptimization(),
@@ -237,6 +246,7 @@ public final class PeepholeOptimizationsPassTest extends CompilerTestCase {
     test("var x,y; var z;", "var y; var z;");
   }
 
+  @Test
   public void testOptimizationReplacingNode() {
     currentPeepholePasses = ImmutableList.of(
         new RenameYToX(),

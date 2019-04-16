@@ -16,16 +16,18 @@
 package com.google.javascript.jscomp;
 
 import com.google.common.collect.ImmutableList;
+import com.google.javascript.jscomp.PassFactory.HotSwapPassFactory;
 import com.google.javascript.jscomp.lint.CheckDuplicateCase;
 import com.google.javascript.jscomp.lint.CheckEmptyStatements;
 import com.google.javascript.jscomp.lint.CheckEnums;
 import com.google.javascript.jscomp.lint.CheckInterfaces;
 import com.google.javascript.jscomp.lint.CheckJSDocStyle;
 import com.google.javascript.jscomp.lint.CheckMissingSemicolon;
+import com.google.javascript.jscomp.lint.CheckNullabilityModifiers;
 import com.google.javascript.jscomp.lint.CheckPrimitiveAsObject;
 import com.google.javascript.jscomp.lint.CheckPrototypeProperties;
-import com.google.javascript.jscomp.lint.CheckRedundantNullabilityModifier;
-import com.google.javascript.jscomp.lint.CheckRequiresAndProvidesSorted;
+import com.google.javascript.jscomp.lint.CheckProvidesSorted;
+import com.google.javascript.jscomp.lint.CheckRequiresSorted;
 import com.google.javascript.jscomp.lint.CheckUnusedLabels;
 import com.google.javascript.jscomp.lint.CheckUselessBlocks;
 import com.google.javascript.jscomp.parsing.parser.FeatureSet;
@@ -45,6 +47,7 @@ class LintPassConfig extends PassConfig.PassConfigDelegate {
   @Override
   protected List<PassFactory> getChecks() {
     return ImmutableList.of(
+        gatherModuleMetadataPass,
         earlyLintChecks,
         checkRequires,
         variableReferenceCheck,
@@ -56,6 +59,22 @@ class LintPassConfig extends PassConfig.PassConfigDelegate {
   protected List<PassFactory> getOptimizations() {
     return ImmutableList.of();
   }
+
+  private final HotSwapPassFactory gatherModuleMetadataPass =
+      new HotSwapPassFactory(PassNames.GATHER_MODULE_METADATA) {
+        @Override
+        protected HotSwapCompilerPass create(AbstractCompiler compiler) {
+          return new GatherModuleMetadata(
+              compiler,
+              compiler.getOptions().getProcessCommonJSModules(),
+              compiler.getOptions().getModuleResolutionMode());
+        }
+
+        @Override
+        protected FeatureSet featureSet() {
+          return FeatureSet.latest().withoutTypes();
+        }
+      };
 
   private final PassFactory earlyLintChecks =
       new PassFactory("earlyLintChecks", true) {
@@ -72,11 +91,13 @@ class LintPassConfig extends PassConfig.PassConfigDelegate {
                   new CheckMissingSemicolon(compiler),
                   new CheckSuper(compiler),
                   new CheckPrimitiveAsObject(compiler),
-                  new ClosureCheckModule(compiler),
-                  new CheckRedundantNullabilityModifier(compiler),
-                  new CheckRequiresAndProvidesSorted(compiler),
+                  new ClosureCheckModule(compiler, compiler.getModuleMetadataMap()),
+                  new CheckNullabilityModifiers(compiler),
+                  new CheckProvidesSorted(CheckProvidesSorted.Mode.COLLECT_AND_REPORT),
+                  new CheckRequiresSorted(CheckRequiresSorted.Mode.COLLECT_AND_REPORT),
                   new CheckSideEffects(
                       compiler, /* report */ true, /* protectSideEffectFreeCode */ false),
+                  new CheckTypeImportCodeReferences(compiler),
                   new CheckUnusedLabels(compiler),
                   new CheckUselessBlocks(compiler)));
         }

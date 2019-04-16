@@ -27,6 +27,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Table;
+import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.jscomp.parsing.parser.util.format.SimpleFormat;
 import com.google.javascript.rhino.JSDocInfo;
 import com.google.javascript.rhino.JSDocInfo.Marker;
@@ -419,10 +420,16 @@ public final class SymbolTable {
 
     int refCount = 0;
     for (Reference ref : getReferences(symbol)) {
+      Node node = ref.getNode();
       builder.append(
           SimpleFormat.format(
-              "  Ref %d: %s:%d\n",
-              refCount, ref.getNode().getSourceFileName(), ref.getNode().getLineno()));
+              "  Ref %d: %s line: %d col: %d len: %d %s\n",
+              refCount,
+              node.getSourceFileName(),
+              node.getLineno(),
+              node.getCharno(),
+              node.getLength(),
+              node.isIndexable() ? "" : "non indexable"));
       refCount++;
     }
   }
@@ -445,9 +452,10 @@ public final class SymbolTable {
           }
 
           @Override
-            public void visit(NodeTraversal t, Node n, Node p) {}
-          },
-          externs, root);
+          public void visit(NodeTraversal t, Node n, Node p) {}
+        },
+        externs,
+        root);
   }
 
   /** Gets all the scopes in this symbol table. */
@@ -477,23 +485,30 @@ public final class SymbolTable {
     if (sym == null) {
       // JSCompiler has no symbol for this scope. Check to see if it's a
       // local function. If it is, give it a name.
+      Node rootNode = scope.getRootNode();
       if (scope.isLexicalScope()
           && !scope.isGlobalScope()
-          && scope.getRootNode() != null
-          && !scope.getRootNode().isFromExterns()
-          && scope.getParentScope() != null) {
+          && rootNode != null
+          && !rootNode.isFromExterns()
+          && scope.getParentScope() != null
+          && rootNode.isFunction()) {
         SymbolScope parent = scope.getParentScope();
 
-        int count = parent.innerAnonFunctionsWithNames++;
-        String innerName = "function%" + count;
+        String innerName = "function%" + scope.getIndexInParent();
+        JSType type = rootNode.getJSType();
+
+        // Functions defined on anonymous objects are considered anonymous as well:
+        // doFoo({bar() {}});
+        // bar is not technically anonymous, but it's a method on an anonymous object literal so
+        // effectively it's anonymous/inaccessible. In this case, slightly correct rootNode to
+        // be a MEMBER_FUNCTION_DEF node instead of a FUNCTION node.
+        if (rootNode.getParent().isMemberFunctionDef()) {
+          rootNode = rootNode.getParent();
+        }
+
         Symbol anonymousFunctionSymbol =
             declareSymbol(
-                innerName,
-                scope.getRootNode().getJSType(),
-                /* inferred= */ true,
-                parent,
-                scope.getRootNode(),
-                /* info= */ null);
+                innerName, type, /* inferred= */ true, parent, rootNode, /* info= */ null);
         scope.setSymbolForScope(anonymousFunctionSymbol);
       }
     }
@@ -631,12 +646,25 @@ public final class SymbolTable {
     return symbol;
   }
 
+  /**
+   * Merges 'from' symbol to 'to' symbol by moving all references to point to the 'to' symbol and
+   * removing 'from' symbol.
+   */
+  private void mergeSymbol(Symbol from, Symbol to) {
+    for (Node nodeToMove : from.references.keySet()) {
+      if (!nodeToMove.equals(from.getDeclarationNode())) {
+        to.defineReferenceAt(nodeToMove);
+      }
+    }
+    removeSymbol(from);
+  }
+
   private void removeSymbol(Symbol s) {
     SymbolScope scope = getScope(s);
-    if (!scope.ownSymbols.remove(s.getName()).equals(s)) {
+    if (!s.equals(scope.ownSymbols.remove(s.getName()))) {
       throw new IllegalStateException("Symbol not found in scope " + s);
     }
-    if (!symbols.remove(s.getDeclaration().getNode(), s.getName()).equals(s)) {
+    if (!s.equals(symbols.remove(s.getDeclaration().getNode(), s.getName()))) {
       throw new IllegalStateException("Symbol not found in table " + s);
     }
     // If s declares a property scope then all child symbols should be removed as well.
@@ -717,6 +745,7 @@ public final class SymbolTable {
     // be processed first. See explanation below.
     List<Symbol> types = new ArrayList<>();
     List<Symbol> googModuleExportTypes = new ArrayList<>();
+    List<Symbol> moduleTypes = new ArrayList<>();
 
     // Create a property scope for each named type and each anonymous object,
     // and populate it with that object's properties.
@@ -726,8 +755,11 @@ public final class SymbolTable {
     // where x is just an instance of another type.
     for (Symbol sym : getAllSymbols()) {
       if (needsPropertyScope(sym)) {
-        if (sym.getName().startsWith("module$exports")) {
+        String name = sym.getName();
+        if (name.startsWith("module$exports")) {
           googModuleExportTypes.add(sym);
+        } else if (name.startsWith("module$")) {
+          moduleTypes.add(sym);
         } else {
           types.add(sym);
         }
@@ -761,12 +793,12 @@ public final class SymbolTable {
     // If we order them in reverse lexicographical order symbols x.y and x will be processed before
     // foo. This is wrong as foo is in fact property of x.y namespace. So we must process all
     // module$exports$ symbols first. That's why we collected them in a separate list.
-    //
     Collections.sort(types, getNaturalSymbolOrdering().reverse());
     Collections.sort(googModuleExportTypes, getNaturalSymbolOrdering().reverse());
-    Iterable<Symbol> allTypes = Iterables.concat(googModuleExportTypes, types);
+    Collections.sort(moduleTypes, getNaturalSymbolOrdering().reverse());
+    Iterable<Symbol> allTypes = Iterables.concat(googModuleExportTypes, types, moduleTypes);
 
-    // If you though we are done with tricky case - you were wrong. There is another one!
+    // If you thought we are done with tricky case - you were wrong. There is another one!
     // The problem with the same property scope appearing several times. For example when using
     // aliases:
     //
@@ -781,6 +813,27 @@ public final class SymbolTable {
     // type we need to process only one of them. To do that we build a "type => root symbol" map.
     // In this case the map will be {one: 1} => OBJ. Using this map will skip 'alias' when creating
     // property scopes.
+    //
+    // Another similar case is NodeJs modules. Consider following setup:
+    //
+    // foo.js:
+    // exports.one = 1;
+    //
+    // bar.js:
+    // const foo = require('./foo.js');
+    // foo.one;
+    //
+    // In this setup foo.js transpiled to:
+    // module$foo.default = {};
+    // module$foo.default.one = 1;
+    //
+    // and bar.js transpiled to:
+    // const foo = module$foo.default;
+    // foo.one;
+    //
+    // So here 'foo' becomes alias of 'module$foo.default' and we get the same issue of having 2
+    // symbols with the same type and we need to make sure that 'module$foo.default' becomes the
+    // root symbol. That's why all module symbols (moduleTypes list) processed last.
     //
     // NOTE: we are using IdentityHashMap to compare types using == because we need to find symbols
     // that point to the exact same type instance.
@@ -973,22 +1026,18 @@ public final class SymbolTable {
       return;
     }
 
-    SymbolScope parentPropertyScope = null;
-
     ObjectType type = getType(s) == null ? null : getType(s).toObjectType();
     if (type == null) {
       return;
     }
 
-    ObjectType proto = type.getParentScope();
-    if (proto != null && proto != type && proto.getConstructor() != null) {
-      Symbol parentSymbol = getSymbolForInstancesOf(proto.getConstructor());
-      if (parentSymbol != null) {
-        createPropertyScopeFor(parentSymbol);
-        parentPropertyScope = parentSymbol.getPropertyScope();
-      }
-    }
+    // Create an empty property scope for the given symbol, maybe with a parent scope if it has
+    // an implicit prototype.
+    SymbolScope parentPropertyScope = maybeGetParentPropertyScope(type);
+    s.setPropertyScope(new SymbolScope(null, parentPropertyScope, type, s));
 
+    // If this symbol represents some 'a.b.c.prototype', add any instance properties of a.b.c
+    // into the symbol scope.
     ObjectType instanceType = type;
     Iterable<String> propNames = type.getOwnPropertyNames();
     if (instanceType.isFunctionPrototypeType()) {
@@ -1000,7 +1049,7 @@ public final class SymbolTable {
       }
     }
 
-    s.setPropertyScope(new SymbolScope(null, parentPropertyScope, type, s));
+    // Add all declared properties in propNames into the property scope
     for (String propName : propNames) {
       StaticSlot newProp = instanceType.getSlot(propName);
       if (newProp.getDeclaration() == null) {
@@ -1043,26 +1092,70 @@ public final class SymbolTable {
     }
   }
 
+  /**
+   * If this type has an implicit prototype set, returns the SymbolScope corresponding to the
+   * properties of the implicit prototype. Otherwise returns null.
+   *
+   * <p>Note that currently we only handle cases where the implicit prototype is a) a class or b) is
+   * an instance object.
+   */
+  @Nullable
+  private SymbolScope maybeGetParentPropertyScope(ObjectType symbolObjectType) {
+    ObjectType proto = symbolObjectType.getImplicitPrototype();
+    if (proto == null || proto == symbolObjectType) {
+      return null;
+    }
+    final Symbol parentSymbol;
+    if (isEs6ClassConstructor(proto)) {
+      // given `class Foo {} class Bar extends Foo {}`, `Foo` is the implicit prototype of `Bar`.
+      parentSymbol = getSymbolDeclaredBy(proto.toMaybeFunctionType());
+    } else if (proto.getConstructor() != null) {
+      // given
+      //   /** @constructor */ function Foo() {}
+      //   /** @constructor */ function Bar() {}
+      //   goog.inherits(Bar, Foo);
+      // the implicit prototype of Bar.prototype is the instance of Foo.
+      parentSymbol = getSymbolForInstancesOf(proto.getConstructor());
+    } else {
+      return null;
+    }
+    if (parentSymbol == null) {
+      return null;
+    }
+    createPropertyScopeFor(parentSymbol);
+    return parentSymbol.getPropertyScope();
+  }
+
+  private boolean isEs6ClassConstructor(JSType type) {
+    return type.isFunctionType()
+        && type.toMaybeFunctionType().getSource() != null
+        && type.toMaybeFunctionType().getSource().isClass();
+  }
+
   /** Fill in references to "this" variables. */
   void fillThisReferences(Node externs, Node root) {
     (new ThisRefCollector()).process(externs, root);
   }
 
-  private boolean isSymbolGeneratedAndShouldNotBeIndexed(Symbol symbol) {
-    // Destructuring pass introduces new variables:
-    //
-    // let {a, b} = foo;
-    //
-    // is transpiled to
-    //
-    // let destructuring$var0 = foo;
-    // let a = destructuring$var0.a;
-    // let b = destructuring$var0.b;
-    //
-    // destructuring$var0 should not get into index as it's invisible to a user.
-    // TODO(b/77597706): remove this once destructuring transpilation is done after type checks.
-    return symbol.getName().contains(Es6RewriteDestructuring.DESTRUCTURING_TEMP_VAR);
+  /** Fill in references to "super" variables. */
+  void fillSuperReferences(Node externs, Node root) {
+    NodeTraversal.Callback collectSuper =
+        new AbstractPostOrderCallback() {
+          @Override
+          public void visit(NodeTraversal t, Node n, Node parent) {
+            // Process only 'super' nodes with types.
+            if (!n.isSuper() || n.getJSType() == null) {
+              return;
+            }
+            Symbol classSymbol = getSymbolForTypeHelper(n.getJSType(), /* linkToCtor= */ false);
+            if (classSymbol != null) {
+              classSymbol.defineReferenceAt(n);
+            }
+          }
+        };
+    NodeTraversal.traverseRoots(compiler, collectSuper, externs, root);
   }
+
   /*
    * Checks whether symbol is a quoted object literal key. In the following object:
    *
@@ -1076,6 +1169,65 @@ public final class SymbolTable {
   }
 
   /**
+   * Heuristic method to check whether symbol was created by DeclaredGlobalExternsOnWindow.java
+   * pass.
+   */
+  private boolean isSymbolDuplicatedExternOnWindow(Symbol symbol) {
+    Node node = symbol.getDeclarationNode();
+    // Check that node is of type "window.foo";
+    return !node.isIndexable()
+        && node.isGetProp()
+        && node.getFirstChild().isName()
+        && node.getFirstChild().getString().equals("window");
+  }
+
+  /**
+   * DeclaredGLobalExternsOnWindow.java pass duplicates all global variables so that:
+   *
+   * <pre>
+   * var foo;
+   * </pre>
+   *
+   * becomes
+   *
+   * <pre>
+   * var foo;
+   * window.foo;
+   * </pre>
+   *
+   * This function finds all such cases and merges window.foo symbol back to foo. It changes
+   * window.foo references to point to foo symbol.
+   */
+  private void mergeExternSymbolsDuplicatedOnWindow() {
+    // To find duplicated symbols we rely on the fact that duplicated symbol share the same
+    // source position as original symbol and going to use filename => sourcePosition => symbol
+    // table.
+    Table<String, Integer, Symbol> externSymbols = HashBasedTable.create();
+    for (Symbol symbol : ImmutableList.copyOf(symbols.values())) {
+      if (symbol.getDeclarationNode() == null
+          || symbol.getDeclarationNode().getStaticSourceFile() == null
+          || !symbol.getDeclarationNode().getStaticSourceFile().isExtern()) {
+        continue;
+      }
+      String sourceFile = symbol.getSourceFileName();
+      int position = symbol.getDeclarationNode().getSourcePosition();
+      if (!externSymbols.contains(sourceFile, position)) {
+        externSymbols.put(sourceFile, position, symbol);
+        continue;
+      }
+      Symbol existingSymbol = externSymbols.get(sourceFile, position);
+      // Consider 2 possibilies: either symbol or existingSymbol might be the generated symbol we
+      // are looking for.
+      if (isSymbolDuplicatedExternOnWindow(existingSymbol)) {
+        mergeSymbol(existingSymbol, symbol);
+        externSymbols.put(sourceFile, position, symbol);
+      } else if (isSymbolDuplicatedExternOnWindow(symbol)) {
+        mergeSymbol(symbol, existingSymbol);
+      }
+    }
+  }
+
+  /**
    * Removes various generated symbols that are invisible to users and pollute or mess up index.
    * Jscompiler does transpilations that might introduce extra nodes/symbols. Most of these symbols
    * should not get into final SymbolTable because SymbolTable should contain only symbols that
@@ -1086,9 +1238,7 @@ public final class SymbolTable {
     // Need to iterate over copy of values list because removeSymbol() will change the map
     // and we'll get ConcurrentModificationException
     for (Symbol symbol : ImmutableList.copyOf(symbols.values())) {
-      if (isSymbolGeneratedAndShouldNotBeIndexed(symbol)) {
-        removeSymbol(symbol);
-      } else if (symbol.getDeclaration() != null
+      if (symbol.getDeclaration() != null
           && symbol.getDeclaration().getNode().getBooleanProp(Node.MODULE_EXPORT)) {
 
         // Lazy initialize nodeToSymbol map as it's needed only when ES6 modules are used.
@@ -1104,10 +1254,14 @@ public final class SymbolTable {
         inlineEs6ExportProperty(symbol, nodeToSymbol);
       } else if (isSymbolAQuotedObjectKey(symbol)) {
         // Quoted object keys are not considered symbols. Only unquoted keys and dot-access
-        // properties are considered symbols.
-        removeSymbol(symbol);
+        // properties are considered symbols. Remove the quoted key.
+        boolean symbolAlreadyRemoved = !getScope(symbol).ownSymbols.containsKey(symbol.getName());
+        if (!symbolAlreadyRemoved) {
+          removeSymbol(symbol);
+        }
       }
     }
+    mergeExternSymbolsDuplicatedOnWindow();
   }
 
   /**
@@ -1160,10 +1314,7 @@ public final class SymbolTable {
     if (originalSymbol == null) {
       return;
     }
-    for (Node nodeToMove : exportPropertySymbol.references.keySet()) {
-      originalSymbol.defineReferenceAt(nodeToMove);
-    }
-    removeSymbol(exportPropertySymbol);
+    mergeSymbol(exportPropertySymbol, originalSymbol);
   }
 
   /**
@@ -1258,11 +1409,7 @@ public final class SymbolTable {
     }
 
     public Reference defineReferenceAt(Node n) {
-      Reference result = references.get(n);
-      if (result == null) {
-        result = new Reference(this, n);
-        references.put(n, result);
-      }
+      Reference result = references.computeIfAbsent(n, (Node k) -> new Reference(this, k));
       return result;
     }
 
@@ -1348,8 +1495,11 @@ public final class SymbolTable {
     private final Map<String, Symbol> ownSymbols = new LinkedHashMap<>();
     private final int scopeDepth;
 
-    // The number of inner anonymous functions that we've given names to.
-    private int innerAnonFunctionsWithNames = 0;
+    // Index of current scope in the parent scope. Used to generate unique names for variables
+    // having the same name but defined in different scopes.
+    private final int indexInParent;
+
+    private int numberOfChildScopes = 0;
 
     // The symbol associated with a property scope or doc scope.
     private Symbol mySymbol;
@@ -1360,6 +1510,12 @@ public final class SymbolTable {
       this.typeOfThis = typeOfThis;
       this.scopeDepth = parent == null ? 0 : (parent.getScopeDepth() + 1);
       this.mySymbol = mySymbol;
+      if (parent == null) {
+        this.indexInParent = 0;
+      } else {
+        this.indexInParent = parent.numberOfChildScopes;
+        parent.numberOfChildScopes++;
+      }
     }
 
     Symbol getSymbolForScope() {
@@ -1451,6 +1607,10 @@ public final class SymbolTable {
 
     public int getScopeDepth() {
       return scopeDepth;
+    }
+
+    public int getIndexInParent() {
+      return indexInParent;
     }
 
     @Override

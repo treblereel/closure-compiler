@@ -20,7 +20,6 @@ import static com.google.common.base.Preconditions.checkState;
 import static java.util.Comparator.comparing;
 
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.javascript.jscomp.AbstractCompiler;
 import com.google.javascript.jscomp.CompilerPass;
 import com.google.javascript.jscomp.DiagnosticType;
@@ -71,13 +70,18 @@ public class ConvertToTypedInterface implements CompilerPass {
 
   private static final ImmutableSet<String> CALLS_TO_PRESERVE =
       ImmutableSet.of(
+          "Polymer",
           "goog.addSingletonGetter",
           "goog.define",
           "goog.forwardDeclare",
           "goog.module",
           "goog.module.declareLegacyNamespace",
+          // TODO(johnplaisted): Consolidate on declareModuleId / delete declareNamespace.
+          "goog.declareModuleId",
+          "goog.module.declareNamespace",
           "goog.provide",
-          "goog.require");
+          "goog.require",
+          "goog.requireType");
 
   private final AbstractCompiler compiler;
 
@@ -103,18 +107,8 @@ public class ConvertToTypedInterface implements CompilerPass {
     }
   }
 
-  private void removeUselessFiles(Node externs, Node root) {
-    for (Node script : Iterables.concat(externs.children(), root.children())) {
-      if (!script.hasChildren()) {
-        script.detach();
-        compiler.reportChangeToChangeScope(script);
-      }
-    }
-  }
-
   @Override
   public void process(Node externs, Node root) {
-    removeUselessFiles(externs, root);
     for (Node script = root.getFirstChild(); script != null; script = script.getNext()) {
       processFile(script);
     }
@@ -122,6 +116,10 @@ public class ConvertToTypedInterface implements CompilerPass {
 
   private void processFile(Node scriptNode) {
     checkArgument(scriptNode.isScript());
+    if (AbstractCompiler.isFillFileName(scriptNode.getSourceFileName())) {
+      scriptNode.detach();
+      return;
+    }
     FileInfo currentFile = new FileInfo();
     NodeTraversal.traverse(compiler, scriptNode, new RemoveNonDeclarations());
     NodeTraversal.traverse(compiler, scriptNode, new PropagateConstJsdoc(currentFile));
@@ -157,9 +155,10 @@ public class ConvertToTypedInterface implements CompilerPass {
             case CALL:
               Node callee = expr.getFirstChild();
               checkState(!callee.matchesQualifiedName("goog.scope"));
-              if (!CALLS_TO_PRESERVE.contains(callee.getQualifiedName())) {
-                NodeUtil.deleteNode(n, t.getCompiler());
+              if (CALLS_TO_PRESERVE.contains(callee.getQualifiedName())) {
+                return true;
               }
+              NodeUtil.deleteNode(n, t.getCompiler());
               return false;
             case ASSIGN:
               Node lhs = expr.getFirstChild();
@@ -212,6 +211,7 @@ public class ConvertToTypedInterface implements CompilerPass {
           NodeUtil.deleteNode(n.getSecondChild(), t.getCompiler());
           // fall-through
         case FOR_OF:
+        case FOR_AWAIT_OF:
         case FOR_IN:
           NodeUtil.deleteNode(n.getSecondChild(), t.getCompiler());
           Node initializer = n.removeFirstChild();
@@ -259,6 +259,7 @@ public class ConvertToTypedInterface implements CompilerPass {
         case FOR:
         case FOR_IN:
         case FOR_OF:
+        case FOR_AWAIT_OF:
         case IF:
         case SWITCH:
           if (n.getParent() != null) {
@@ -287,9 +288,13 @@ public class ConvertToTypedInterface implements CompilerPass {
 
     /**
      * Does three simplifications to const/let/var nodes.
-     * 1. Splits them so that each declaration is a separate statement.
-     * 2. Removes non-import destructuring statements, which we assume are not type declarations.
-     * 3. Moves inline JSDoc annotations onto the declaration nodes.
+     *
+     * <ul>
+     *   <li>Splits them so that each declaration is a separate statement.
+     *   <li>Removes non-import and non-alias destructuring statements, which we assume are not type
+     *       declarations.
+     *   <li>Moves inline JSDoc annotations onto the declaration nodes.
+     * </ul>
      */
     static void splitNameDeclarationsAndRemoveDestructuring(Node n, NodeTraversal t) {
       checkArgument(NodeUtil.isNameDeclaration(n));
@@ -299,7 +304,8 @@ public class ConvertToTypedInterface implements CompilerPass {
       while (n.hasChildren()) {
         Node lhsToSplit = n.getLastChild();
         if (lhsToSplit.isDestructuringLhs()
-            && !PotentialDeclaration.isImportRhs(lhsToSplit.getLastChild())) {
+            && !PotentialDeclaration.isImportRhs(lhsToSplit.getLastChild())
+            && !PotentialDeclaration.isAliasDeclaration(lhsToSplit, lhsToSplit.getLastChild())) {
           // Remove destructuring statements, which we assume are not type declarations
           NodeUtil.markFunctionsDeleted(lhsToSplit, t.getCompiler());
           NodeUtil.removeChild(n, lhsToSplit);
@@ -420,9 +426,6 @@ public class ConvertToTypedInterface implements CompilerPass {
         decl.remove(compiler);
         return;
       }
-      if (decl.isAliasDefinition()) {
-        return;
-      }
       if (decl.getRhs() != null && decl.getRhs().isFunction()) {
         processFunction(decl.getRhs());
       } else if (decl.getRhs() != null && isClass(decl.getRhs())) {
@@ -452,10 +455,9 @@ public class ConvertToTypedInterface implements CompilerPass {
       checkArgument(paramList.isParamList());
       for (Node arg = paramList.getFirstChild(); arg != null; arg = arg.getNext()) {
         if (arg.isDefaultValue()) {
-          Node replacement = arg.getFirstChild().detach();
-          arg.replaceWith(replacement);
-          arg = replacement;
-          compiler.reportChangeToEnclosingScope(replacement);
+          Node rhs = arg.getLastChild();
+          rhs.replaceWith(NodeUtil.newUndefinedNode(rhs));
+          compiler.reportChangeToEnclosingScope(arg);
         }
       }
     }

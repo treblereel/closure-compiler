@@ -531,15 +531,12 @@ public final class JSDocInfoBuilder {
   }
 
   /**
-   * Records the list of suppressed warnings.
+   * Records the list of suppressed warnings, possibly adding to the set of already configured
+   * warnings.
    */
-  public boolean recordSuppressions(Set<String> suppressions) {
-    if (currentInfo.setSuppressions(suppressions)) {
-      populated = true;
-      return true;
-    } else {
-      return false;
-    }
+  public void recordSuppressions(Set<String> suppressions) {
+    currentInfo.addSuppressions(suppressions);
+    populated = true;
   }
 
   public void addSuppression(String suppression) {
@@ -790,6 +787,21 @@ public final class JSDocInfoBuilder {
   public boolean recordMeaning(String meaning) {
     if (meaning != null && currentInfo.getMeaning() == null) {
       currentInfo.setMeaning(meaning);
+      populated = true;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * Records an identifier for a Closure Primitive. function.
+   *
+   * @return {@code true} If the id was successfully updated.
+   */
+  public boolean recordClosurePrimitiveId(String closurePrimitiveId) {
+    if (closurePrimitiveId != null && currentInfo.getClosurePrimitiveId() == null) {
+      currentInfo.setClosurePrimitiveId(closurePrimitiveId);
       populated = true;
       return true;
     } else {
@@ -1208,10 +1220,8 @@ public final class JSDocInfoBuilder {
     }
   }
 
-  /**
-   * Records that we're lending to another name.
-   */
-  public boolean recordLends(String name) {
+  /** Records that we're lending to another name. */
+  public boolean recordLends(JSTypeExpression name) {
     if (!hasAnyTypeRelatedTags()) {
       currentInfo.setLendsName(name);
       populated = true;
@@ -1379,7 +1389,7 @@ public final class JSDocInfoBuilder {
         || currentInfo.hasReturnType()
         || currentInfo.hasBaseType()
         || currentInfo.getExtendedInterfacesCount() > 0
-        || currentInfo.getLendsName() != null
+        || currentInfo.hasLendsName()
         || currentInfo.hasThisType()
         || hasAnySingletonTypeTags();
   }

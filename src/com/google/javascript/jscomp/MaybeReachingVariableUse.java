@@ -200,16 +200,13 @@ class MaybeReachingVariableUse extends
       case WHILE:
       case DO:
       case IF:
-        computeMayUse(
-            NodeUtil.getConditionExpression(n), cfgNode, output, conditional);
-        return;
-
       case FOR:
         computeMayUse(NodeUtil.getConditionExpression(n), cfgNode, output, conditional);
         return;
 
       case FOR_IN:
       case FOR_OF:
+      case FOR_AWAIT_OF:
         // for(x in y) {...}
         Node lhs = n.getFirstChild();
         Node rhs = lhs.getNext();

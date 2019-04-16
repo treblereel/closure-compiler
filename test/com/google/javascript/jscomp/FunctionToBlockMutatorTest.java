@@ -18,28 +18,31 @@ package com.google.javascript.jscomp;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.javascript.jscomp.CompilerTestCase.lines;
+import static com.google.javascript.rhino.testing.NodeSubject.assertNode;
 
-import com.google.javascript.jscomp.AbstractCompiler.LifeCycleStage;
 import com.google.javascript.jscomp.NodeTraversal.Callback;
 import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
-import junit.framework.TestCase;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
-/**
- * @author johnlenz@google.com (John Lenz)
- */
-public final class FunctionToBlockMutatorTest extends TestCase {
+/** @author johnlenz@google.com (John Lenz) */
+@RunWith(JUnit4.class)
+public final class FunctionToBlockMutatorTest {
 
   private boolean needsDefaultResult;
   private boolean isCallInLoop;
 
-  @Override
+  @Before
   public void setUp() {
     needsDefaultResult = false;
     isCallInLoop = false;
   }
 
+  @Test
   public void testMutateNoReturnWithoutResultAssignment() {
     helperMutate(
         "function foo(){}; foo();",
@@ -47,6 +50,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo");
   }
 
+  @Test
   public void testMutateNoReturnWithResultAssignment() {
     needsDefaultResult = true;
     helperMutate(
@@ -55,7 +59,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo");
   }
 
-
+  @Test
   public void testMutateNoValueReturnWithoutResultAssignment() {
     helperMutate(
         "function foo(){return;}; foo();",
@@ -63,6 +67,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo", null);
   }
 
+  @Test
   public void testMutateNoValueReturnWithResultAssignment() {
     helperMutate(
         "function foo(){return;}; var result = foo();",
@@ -70,6 +75,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo");
   }
 
+  @Test
   public void testMutateValueReturnWithoutResultAssignment() {
     helperMutate(
         "function foo(){return true;}; foo();",
@@ -77,6 +83,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo", null);
   }
 
+  @Test
   public void testMutateValueReturnWithResultAssignment() {
     needsDefaultResult = true;
     helperMutate(
@@ -85,6 +92,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo", "x");
   }
 
+  @Test
   public void testMutateWithMultipleReturns() {
     needsDefaultResult = true;
     helperMutate(
@@ -105,6 +113,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo");
   }
 
+  @Test
   public void testMutateWithParameters1() {
     // Simple call with useless parameter
     helperMutate(
@@ -113,6 +122,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo", null);
   }
 
+  @Test
   public void testMutateWithParameters2() {
     // Simple call with parameter
     helperMutate(
@@ -121,6 +131,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo", null);
   }
 
+  @Test
   public void testMutateWithParameters3() {
     // Parameter has side-effects.
     helperMutate(
@@ -129,6 +140,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo", null);
   }
 
+  @Test
   public void testMutate8() {
     // Parameter has side-effects.
     helperMutate(
@@ -137,6 +149,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         "foo", null);
   }
 
+  @Test
   public void testMutateInitializeUninitializedVars1() {
     isCallInLoop = true;
     helperMutate(
@@ -146,14 +159,16 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         null);
   }
 
+  @Test
   public void testMutateInitializeUninitializedVars2() {
     helperMutate(
-        "function foo(a) {for(var b in c)return a;}; foo(1);",
+        "function foo(a) {var b; for(b in c)return a;}; foo(1);",
         lines(
             "{",
             "  JSCompiler_inline_label_foo_2:",
             "  {",
-            "    for (var b$jscomp$inline_1 in c) {",
+            "    var b$jscomp$inline_1;",
+            "    for (b$jscomp$inline_1 in c) {",
             "      1;",
             "      break JSCompiler_inline_label_foo_2;",
             "    }",
@@ -163,6 +178,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         null);
   }
 
+  @Test
   public void testMutateInitializeUninitializedLets1() {
     isCallInLoop = true;
     helperMutate(
@@ -172,6 +188,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         null);
   }
 
+  @Test
   public void testMutateInitializeUninitializedLets2() {
     helperMutate(
         "function foo(a) {for(let b in c)return a;}; foo(1);",
@@ -189,6 +206,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         null);
   }
 
+  @Test
   public void testMutateCallInLoopVars1() {
     String src = lines(
         "function foo(a) {",
@@ -214,6 +232,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         null);
   }
 
+  @Test
   public void testMutateFunctionDefinition() {
     // Function declarations are rewritten as function expressions.
     helperMutate(
@@ -223,6 +242,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
         null);
   }
 
+  @Test
   public void testMutateFunctionDefinitionHoisting() {
     helperMutate(
         lines(
@@ -236,11 +256,11 @@ public final class FunctionToBlockMutatorTest extends TestCase {
             "foo(1);"),
         lines(
             "{",
-            "  var g$jscomp$inline_2 = function(c$jscomp$inline_6) {return c$jscomp$inline_6};",
-            "  var h$jscomp$inline_4 = function(){};",
-            "  var i$jscomp$inline_5 = function(){};",
-            "  var b$jscomp$inline_1 = g$jscomp$inline_2(1);",
-            "  var c$jscomp$inline_3 = i$jscomp$inline_5();",
+            "  var g$jscomp$inline_1 = function(c$jscomp$inline_6) {return c$jscomp$inline_6};",
+            "  var h$jscomp$inline_2 = function(){};",
+            "  var i$jscomp$inline_3 = function(){};",
+            "  var b$jscomp$inline_4 = g$jscomp$inline_1(1);",
+            "  var c$jscomp$inline_5 = i$jscomp$inline_3();",
             "}"),
         "foo",
         null);
@@ -268,26 +288,21 @@ public final class FunctionToBlockMutatorTest extends TestCase {
     compiler.externsRoot = new Node(Token.ROOT);
     compiler.jsRoot = IR.root(script);
     compiler.externAndJsRoot = IR.root(compiler.externsRoot, compiler.jsRoot);
-    MarkNoSideEffectCalls mark = new MarkNoSideEffectCalls(compiler);
-    mark.process(compiler.externsRoot, compiler.jsRoot);
+
+    new Normalize(compiler, false).process(compiler.externsRoot, compiler.jsRoot);
+    new PureFunctionIdentifier.Driver(compiler).process(compiler.externsRoot, compiler.jsRoot);
 
     final Node fnNode = findFunction(script, fnName);
 
-    // Fake precondition.
-    compiler.setLifeCycleStage(LifeCycleStage.NORMALIZED);
-
     // inline tester
-    Method tester = (NodeTraversal t, Node n, Node parent) -> {
-      Node result = mutator.mutate(
-          fnName, fnNode, n, resultName,
-          needsDefaultResult, isCallInLoop);
-      validateSourceInfo(compiler, result);
-      String explanation = expected.checkTreeEquals(result);
-      assertNull("\nExpected: " + compiler.toSource(expected)
-          + "\nResult:   " + compiler.toSource(result)
-          + "\n" + explanation, explanation);
-      return true;
-    };
+    Method tester =
+        (NodeTraversal t, Node n, Node parent) -> {
+          Node result =
+              mutator.mutate(fnName, fnNode, n, resultName, needsDefaultResult, isCallInLoop);
+          validateSourceInfo(compiler, result);
+          assertNode(result).usingSerializer(compiler::toSource).isEqualTo(expected);
+          return true;
+        };
 
     compiler.resetUniqueNameId();
     TestCallback test = new TestCallback(fnName, tester);
@@ -326,7 +341,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
       }
 
       if (parent == null) {
-        assertTrue(complete);
+        assertThat(complete).isTrue();
       }
     }
   }
@@ -350,7 +365,7 @@ public final class FunctionToBlockMutatorTest extends TestCase {
 
   private static Node parse(Compiler compiler, String js) {
     Node n = compiler.parseTestCode(js);
-    assertEquals(0, compiler.getErrorCount());
+    assertThat(compiler.getErrorCount()).isEqualTo(0);
     return n;
   }
 }

@@ -258,7 +258,7 @@ HTMLDocument.prototype.open = function(opt_mimeType, opt_replace) {};
 HTMLDocument.prototype.close = function() {};
 
 /**
- * @param {string} text
+ * @param {!TrustedHTML|string} text
  * @return {undefined}
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-75233634
  * @override
@@ -266,7 +266,7 @@ HTMLDocument.prototype.close = function() {};
 HTMLDocument.prototype.write = function(text) {};
 
 /**
- * @param {string} text
+ * @param {!TrustedHTML|string} text
  * @return {undefined}
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-35318390
  * @override
@@ -518,6 +518,7 @@ HTMLLinkElement.prototype.charset;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-33532588
  */
 HTMLLinkElement.prototype.href;
@@ -614,6 +615,7 @@ function HTMLBaseElement() {}
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-65382887
  */
 HTMLBaseElement.prototype.href;
@@ -768,6 +770,7 @@ HTMLFormElement.prototype.acceptCharset;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-74049184
  */
 HTMLFormElement.prototype.action;
@@ -1062,6 +1065,7 @@ HTMLInputElement.prototype.size;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-97320704
  */
 HTMLInputElement.prototype.src;
@@ -1639,6 +1643,7 @@ HTMLAnchorElement.prototype.coords;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-88517319
  */
 HTMLAnchorElement.prototype.href;
@@ -1768,12 +1773,6 @@ HTMLImageElement.prototype.name;
 
 /**
  * @type {string}
- * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/referrerPolicy
- */
-HTMLImageElement.prototype.referrerPolicy;
-
-/**
- * @type {string}
  * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-87762984
  */
@@ -1830,6 +1829,7 @@ HTMLObjectElement.prototype.code;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-25709136
  */
 HTMLObjectElement.prototype.codeBase;
@@ -1848,6 +1848,7 @@ HTMLObjectElement.prototype.contentDocument;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-81766986
  */
 HTMLObjectElement.prototype.data;
@@ -2072,6 +2073,7 @@ HTMLAreaElement.prototype.coords;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-34672936
  */
 HTMLAreaElement.prototype.href;
@@ -2138,12 +2140,14 @@ HTMLScriptElement.prototype.onreadystatechange;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-75147231
  */
 HTMLScriptElement.prototype.src;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-46872999
  */
 HTMLScriptElement.prototype.text;
@@ -2648,6 +2652,7 @@ HTMLFrameElement.prototype.scrolling;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-78799535
  */
 HTMLFrameElement.prototype.src;
@@ -2716,6 +2721,7 @@ HTMLIFrameElement.prototype.scrolling;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://www.w3.org/TR/2000/CR-DOM-Level-2-20000510/html.html#ID-43933957
  */
 HTMLIFrameElement.prototype.src;
@@ -2728,31 +2734,31 @@ HTMLIFrameElement.prototype.src;
 HTMLIFrameElement.prototype.width;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Core/core.html#ID-258A00AF
  */
 DOMException.INVALID_STATE_ERR = 11;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Core/core.html#ID-258A00AF
  */
 DOMException.SYNTAX_ERR = 12;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Core/core.html#ID-258A00AF
  */
 DOMException.INVALID_MODIFICATION_ERR = 13;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Core/core.html#ID-258A00AF
  */
 DOMException.NAMESPACE_ERR = 14;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Core/core.html#ID-258A00AF
  */
 DOMException.INVALID_ACCESS_ERR = 15;

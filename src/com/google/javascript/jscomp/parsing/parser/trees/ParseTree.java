@@ -100,6 +100,11 @@ public class ParseTree {
   public IfStatementTree asIfStatement() { return (IfStatementTree) this; }
   public ImportDeclarationTree asImportDeclaration() { return (ImportDeclarationTree) this; }
   public ImportSpecifierTree asImportSpecifier() { return (ImportSpecifierTree) this; }
+
+  public DynamicImportTree asDynamicImportExpression() {
+    return (DynamicImportTree) this;
+  }
+
   public LabelledStatementTree asLabelledStatement() { return (LabelledStatementTree) this; }
   public LiteralExpressionTree asLiteralExpression() { return (LiteralExpressionTree) this; }
   public MemberExpressionTree asMemberExpression() { return (MemberExpressionTree) this; }
@@ -172,6 +177,10 @@ public class ParseTree {
 
   public UpdateExpressionTree asUpdateExpression() {
     return (UpdateExpressionTree) this;
+  }
+
+  public ForAwaitOfStatementTree asForAwaitOfStatement() {
+    return (ForAwaitOfStatementTree) this;
   }
 
   public boolean isPattern() {

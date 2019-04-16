@@ -72,9 +72,6 @@ class RhinoErrorReporter {
   static final DiagnosticType BAD_JSDOC_ANNOTATION =
       DiagnosticType.warning("JSC_BAD_JSDOC_ANNOTATION", "Parse error. {0}");
 
-  static final DiagnosticType JSDOC_IN_BLOCK_COMMENT =
-      DiagnosticType.warning("JSC_JSDOC_IN_BLOCK_COMMENT", "Parse error. {0}");
-
   static final DiagnosticType INVALID_ES3_PROP_NAME = DiagnosticType.warning(
       "JSC_INVALID_ES3_PROP_NAME",
       "Keywords and reserved words are not allowed as unquoted property " +
@@ -83,11 +80,11 @@ class RhinoErrorReporter {
       "set the appropriate language_in option.");
 
   static final DiagnosticType PARSE_TREE_TOO_DEEP =
-      DiagnosticType.error("PARSE_TREE_TOO_DEEP",
-          "Parse tree too deep.");
+      DiagnosticType.error("JSC_PARSE_TREE_TOO_DEEP", "Parse tree too deep.");
 
   static final DiagnosticType INVALID_OCTAL_LITERAL =
-      DiagnosticType.warning("INVALID_OCTAL_LITERAL",
+      DiagnosticType.warning(
+          "JSC_INVALID_OCTAL_LITERAL",
           "This style of octal literal is not supported in strict mode.");
 
   static final DiagnosticType STRING_CONTINUATION =
@@ -96,13 +93,17 @@ class RhinoErrorReporter {
   static final DiagnosticType LANGUAGE_FEATURE =
       DiagnosticType.error("JSC_LANGUAGE_FEATURE", "{0}.");
 
+  static final DiagnosticType UNSUPPORTED_LANGUAGE_FEATURE =
+      DiagnosticType.error("JSC_UNSUPPORTED_LANGUAGE_FEATURE", "{0}.");
+
   static final DiagnosticType ES6_TYPED =
-      DiagnosticType.error("ES6_TYPED",
+      DiagnosticType.error(
+          "JSC_ES6_TYPED",
           "{0}. Use --language_in=ECMASCRIPT6_TYPED to enable ES6 typed features.");
 
   static final DiagnosticType MISPLACED_TYPE_SYNTAX =
-      DiagnosticType.error("MISPLACED_TYPE_SYNTAX",
-          "Can only have JSDoc or inline type annotations, not both");
+      DiagnosticType.error(
+          "JSC_MISPLACED_TYPE_SYNTAX", "Can only have JSDoc or inline type annotations, not both");
 
   // A map of Rhino messages to their DiagnosticType.
   private final Map<Pattern, DiagnosticType> typeMap;
@@ -130,34 +131,23 @@ class RhinoErrorReporter {
 
             // Duplicate parameter
             .put(replacePlaceHolders("Duplicate parameter name \"{0}\""), DUPLICATE_PARAM)
-
             .put(Pattern.compile("Unnecessary escape:.*"), UNNECESSARY_ESCAPE)
-
             .put(Pattern.compile("^invalid param name.*"), INVALID_PARAM)
 
             // Unknown @annotations.
             .put(
                 replacePlaceHolders(SimpleErrorReporter.getMessage0("msg.bad.jsdoc.tag")),
                 BAD_JSDOC_ANNOTATION)
-
-            .put(
-                Pattern.compile("^" + Pattern.quote(
-                    "Non-JSDoc comment has annotations. "
-                        + "Did you mean to start it with '/**'?")),
-                JSDOC_IN_BLOCK_COMMENT)
-
             .put(
                 Pattern.compile(
                     "^Keywords and reserved words are not allowed as unquoted property.*"),
                 INVALID_ES3_PROP_NAME)
-
             .put(Pattern.compile("^Too many template parameters"), TOO_MANY_TEMPLATE_PARAMS)
 
             // Type annotation warnings.
             .put(
                 Pattern.compile(".*Type annotations should have curly braces.*"),
                 JSDOC_MISSING_BRACES_WARNING)
-
             .put(Pattern.compile("Missing type declaration\\."), JSDOC_MISSING_TYPE_WARNING)
 
             // Unresolved types that aren't forward declared.
@@ -171,17 +161,16 @@ class RhinoErrorReporter {
 
             // Old-style octal literals
             .put(Pattern.compile("^Octal .*literal.*"), INVALID_OCTAL_LITERAL)
-
             .put(Pattern.compile("^String continuations.*"), STRING_CONTINUATION)
-
             .put(
                 Pattern.compile("^This language feature is only supported for .*"),
                 LANGUAGE_FEATURE)
-
+            .put(
+                Pattern.compile(
+                    "^This language feature is not currently supported by the compiler: .*"),
+                UNSUPPORTED_LANGUAGE_FEATURE)
             .put(Pattern.compile("^type syntax is only supported in ES6 typed mode.*"), ES6_TYPED)
-
             .put(Pattern.compile("^Can only have JSDoc or inline type.*"), MISPLACED_TYPE_SYNTAX)
-
             .build();
   }
 

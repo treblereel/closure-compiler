@@ -236,49 +236,49 @@ CSSRule.prototype.style;
 
 /**
  * Indicates that the rule is a {@see CSSUnknownRule}.
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSRule-ruleType
  */
 CSSRule.UNKNOWN_RULE = 0;
 
 /**
  * Indicates that the rule is a {@see CSSStyleRule}.
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSRule-ruleType
  */
 CSSRule.STYLE_RULE = 1;
 
 /**
  * Indicates that the rule is a {@see CSSCharsetRule}.
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSRule-ruleType
  */
 CSSRule.CHARSET_RULE = 2;
 
 /**
  * Indicates that the rule is a {@see CSSImportRule}.
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSRule-ruleType
  */
 CSSRule.IMPORT_RULE = 3;
 
 /**
  * Indicates that the rule is a {@see CSSMediaRule}.
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSRule-ruleType
  */
 CSSRule.MEDIA_RULE = 4;
 
 /**
  * Indicates that the rule is a {@see CSSFontFaceRule}.
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSRule-ruleType
  */
 CSSRule.FONT_FACE_RULE = 5;
 
 /**
  * Indicates that the rule is a {@see CSSPageRule}.
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSRule-ruleType
  */
 CSSRule.PAGE_RULE = 6;
@@ -558,25 +558,25 @@ CSSValue.prototype.cssText;
 CSSValue.prototype.cssValueType;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSValue-types
  */
 CSSValue.CSS_INHERIT = 0;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSValue-types
  */
 CSSValue.CSS_PRIMITIVE_VALUE = 1;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSValue-types
  */
 CSSValue.CSS_VALUE_LIST = 2;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSValue-types
  */
 CSSValue.CSS_CUSTOM = 3;
@@ -595,157 +595,157 @@ function CSSPrimitiveValue() {}
 CSSPrimitiveValue.prototype.primitiveType;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_UNKNOWN = 0;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_NUMBER = 1;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_PERCENTAGE = 2;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_EMS = 3;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_EXS = 4;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_PX = 5;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_CM = 6;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_MM = 7;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_IN = 8;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_PT = 9;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_PC = 10;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_DEG = 11;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_RAD = 12;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_GRAD = 13;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_MS = 14;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_S = 15;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_HZ = 16;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_KHZ = 17;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_DIMENSION = 18;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_STRING = 19;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_URI = 20;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_IDENT = 21;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_ATTR = 22;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_COUNTER = 23;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_RECT = 24;
 
 /**
- * @type {number}
+ * @const {number}
  * @see http://www.w3.org/TR/DOM-Level-2-Style/css.html#CSS-CSSPrimitiveValue
  */
 CSSPrimitiveValue.CSS_RGBCOLOR = 25;
@@ -1822,6 +1822,62 @@ CSSProperties.prototype.opacity;
  */
 CSSProperties.prototype.textOverflow;
 
+// CSS 3 animations
+
+/**
+ * @type {string|number}
+ * @see https://www.w3.org/TR/css-animations-1/#animation
+ */
+CSSProperties.prototype.animation;
+
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-delay
+ */
+CSSProperties.prototype.animationDelay;
+
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-direction
+ */
+CSSProperties.prototype.animationDirection;
+
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-duration
+ */
+CSSProperties.prototype.animationDuration;
+
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-fill-mode
+ */
+CSSProperties.prototype.animationFillMode;
+
+/**
+ * @type {string|number}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-iteration-count
+ */
+CSSProperties.prototype.animationIterationCount;
+
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-name
+ */
+CSSProperties.prototype.animationName;
+
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-play-state
+ */
+CSSProperties.prototype.animationPlayState;
+
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-animations-1/#animation-timing-function
+ */
+CSSProperties.prototype.animationTimingFunction;
+
 // CSS 3 transforms
 
 /**
@@ -1983,6 +2039,11 @@ CSSProperties.prototype.order;
  */
 CSSProperties.prototype.willChange;
 
+/**
+ * @type {string}
+ * @see https://www.w3.org/TR/css-ui-4/#propdef-user-select
+ */
+CSSProperties.prototype.userSelect;
 
 /**
  * TODO(dbeam): Put this in separate file named w3c_cssom.js.
@@ -2189,6 +2250,14 @@ Document.prototype.elementFromPoint = function(x, y) {};
 /**
  * @param {number} x
  * @param {number} y
+ * @return {!IArrayLike<!Element>}
+ * @see http://www.w3.org/TR/cssom-view/#dom-document-elementsfrompoint
+ */
+Document.prototype.elementsFromPoint = function(x, y) {};
+
+/**
+ * @param {number} x
+ * @param {number} y
  * @return {CaretPosition}
  * @see http://www.w3.org/TR/cssom-view/#dom-document-caretpositionfrompoint
  */
@@ -2228,7 +2297,7 @@ CaretPosition.prototype.offset;
 Element.prototype.getClientRects = function() {};
 
 /**
- * @return {!ClientRect}
+ * @return {!DOMRect}
  * @see http://www.w3.org/TR/cssom-view/#dom-element-getboundingclientrect
  */
 Element.prototype.getBoundingClientRect = function() {};
@@ -2239,6 +2308,18 @@ Element.prototype.getBoundingClientRect = function() {};
  * @return {undefined}
  */
 Element.prototype.scrollIntoView = function(opt_top) {};
+
+/**
+ * @param {number|{
+ *   left: (number|undefined),
+ *   top: (number|undefined),
+ *   behavior: (string|undefined),
+ * }} scrollToOptionsOrX
+ * @param {number=} opt_y
+ * @see https://www.w3.org/TR/cssom-view/#extension-to-the-element-interface
+ * @return {undefined}
+ */
+Element.prototype.scrollTo = function(scrollToOptionsOrX, opt_y) {};
 
 /**
  * @type {number}
@@ -2330,7 +2411,7 @@ HTMLElement.prototype.offsetHeight;
 Range.prototype.getClientRects = function() {};
 
 /**
- * @return {!ClientRect}
+ * @return {!DOMRect}
  * @see http://www.w3.org/TR/cssom-view/#dom-range-getboundingclientrect
  */
 Range.prototype.getBoundingClientRect = function() {};
@@ -2409,7 +2490,7 @@ MouseEvent.prototype.offsetY;
 /**
  * @constructor
  * @see http://www.w3.org/TR/cssom-view/#the-clientrectlist-interface
- * @implements {IArrayLike<!ClientRect>}
+ * @implements {IArrayLike<!DOMRect>}
  */
 function ClientRectList() {}
 
@@ -2421,52 +2502,10 @@ ClientRectList.prototype.length;
 
 /**
  * @param {number} index
- * @return {ClientRect}
+ * @return {?DOMRect}
  * @see http://www.w3.org/TR/cssom-view/#dom-clientrectlist-item
  */
 ClientRectList.prototype.item = function(index) {};
-
-/**
- * @constructor
- * @see http://www.w3.org/TR/cssom-view/#the-clientrect-interface
- */
-function ClientRect() {}
-
-/**
- * @type {number}
- * @see http://www.w3.org/TR/cssom-view/#dom-clientrect-top
- */
-ClientRect.prototype.top;
-
-/**
- * @type {number}
- * @see http://www.w3.org/TR/cssom-view/#dom-clientrect-right
- */
-ClientRect.prototype.right;
-
-/**
- * @type {number}
- * @see http://www.w3.org/TR/cssom-view/#dom-clientrect-bottom
- */
-ClientRect.prototype.bottom;
-
-/**
- * @type {number}
- * @see http://www.w3.org/TR/cssom-view/#dom-clientrect-left
- */
-ClientRect.prototype.left;
-
-/**
- * @type {number}
- * @see http://www.w3.org/TR/cssom-view/#dom-clientrect-width
- */
-ClientRect.prototype.width;
-
-/**
- * @type {number}
- * @see http://www.w3.org/TR/cssom-view/#dom-clientrect-height
- */
-ClientRect.prototype.height;
 
 /**
  * @constructor
@@ -2669,6 +2708,36 @@ FontFaceSet.prototype.ready;
  */
 FontFaceSet.prototype.status;
 
+/**
+ * @constructor
+ * @param {string} type
+ * @param {{
+ *   animationName: (string|undefined),
+ *   elapsedTime: (number|undefined),
+ *   pseudoElement: (string|undefined)
+ * }=} opt_animationEventInitDict
+ * @extends {Event}
+ * @see https://drafts.csswg.org/css-animations/#interface-animationevent
+ */
+function AnimationEvent(type, opt_animationEventInitDict) {};
+
+/**
+ * @type {string}
+ * @see https://drafts.csswg.org/css-animations/#dom-animationevent-animationname
+ */
+AnimationEvent.prototype.animationName;
+
+/**
+ * @type {number}
+ * @see https://drafts.csswg.org/css-animations/#dom-animationevent-elapsedtime
+ */
+AnimationEvent.prototype.elapsedTime;
+
+/**
+ * @type {string}
+ * @see https://drafts.csswg.org/css-animations/#dom-animationevent-pseudoelement
+ */
+AnimationEvent.prototype.pseudoElement;
 
 /**
  * @record

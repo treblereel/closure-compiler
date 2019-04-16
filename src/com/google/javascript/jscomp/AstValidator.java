@@ -64,20 +64,34 @@ public final class AstValidator implements CompilerPass {
     this.isScriptFeatureValidationEnabled = validateScriptFeatures;
   }
 
+  /**
+   * Deprecated - use the three-argument constructor instead to specify validateScriptFeatures.
+   * TODO(lharker): remove this constructor after the next external release.
+   */
+  @Deprecated
   public AstValidator(AbstractCompiler compiler, ViolationHandler handler) {
     this(compiler, handler, false);
   }
 
   public AstValidator(AbstractCompiler compiler) {
-    this(compiler, new ViolationHandler() {
-      @Override
-      public void handleViolation(String message, Node n) {
-        throw new IllegalStateException(
-            message + ". Reference node:\n" + n.toStringTree()
-            + "\n Parent node:\n"
-            + ((n.getParent() != null) ? n.getParent().toStringTree() : " no parent "));
-      }
-    });
+    this(compiler, /* validateScriptFeatures= */ false);
+  }
+
+  public AstValidator(AbstractCompiler compiler, boolean validateScriptFeatures) {
+    this(
+        compiler,
+        new ViolationHandler() {
+          @Override
+          public void handleViolation(String message, Node n) {
+            throw new IllegalStateException(
+                message
+                    + ". Reference node:\n"
+                    + n.toStringTree()
+                    + "\n Parent node:\n"
+                    + ((n.getParent() != null) ? n.getParent().toStringTree() : " no parent "));
+          }
+        },
+        validateScriptFeatures);
   }
 
   /**
@@ -170,6 +184,9 @@ public final class AstValidator implements CompilerPass {
         return;
       case FOR_OF:
         validateForOf(n);
+        return;
+      case FOR_AWAIT_OF:
+        validateForAwaitOf(n);
         return;
       case WHILE:
         validateWhile(n);
@@ -424,7 +441,14 @@ public final class AstValidator implements CompilerPass {
         break;
 
       case CALL:
-        validateCallType(n);
+        if (!n.getFirstChild().isSuper()) {
+          // TODO(sdh): need to validate super() using validateNewType() instead, if it existed
+          validateCallType(n);
+        }
+        break;
+
+      case SPREAD:
+        // we don't type spread nodes
         break;
 
       default:
@@ -456,9 +480,11 @@ public final class AstValidator implements CompilerPass {
     if (calleeTypeI.isFunctionType()) {
       FunctionType calleeFunctionTypeI = calleeTypeI.toMaybeFunctionType();
       JSType returnTypeI = calleeFunctionTypeI.getReturnType();
-      // TODO(b/74537281): This will fail after CAST nodes have been removed from the AST.
-      // Must be fixed before this check can be done after optimizations.
-      expectMatchingTypeInformation(callNode, returnTypeI);
+      // Skip this check if the call node was originally in a cast, because the cast type may be
+      // narrower than the return type.
+      if (callNode.getJSTypeBeforeCast() == null) {
+        expectMatchingTypeInformation(callNode, returnTypeI);
+      }
     } // TODO(b/74537281): What other cases should be covered?
   }
 
@@ -603,11 +629,22 @@ public final class AstValidator implements CompilerPass {
     validateFeature(Feature.TEMPLATE_LITERALS, n);
     validateNodeType(Token.TEMPLATELIT, n);
     for (Node child = n.getFirstChild(); child != null; child = child.getNext()) {
-      if (child.isString()) {
-        validateString(child);
+      if (child.isTemplateLitString()) {
+        validateTemplateLitString(child);
       } else {
         validateTemplateLitSub(child);
       }
+    }
+  }
+
+  private void validateTemplateLitString(Node n) {
+    validateNodeType(Token.TEMPLATELIT_STRING, n);
+    validateChildCount(n);
+    try {
+      // Validate that getRawString doesn't throw
+      n.getRawString();
+    } catch (UnsupportedOperationException e) {
+      violation("Invalid TEMPLATELIT_STRING node.", n);
     }
   }
 
@@ -715,6 +752,7 @@ public final class AstValidator implements CompilerPass {
     if (superClass.isEmpty()) {
       validateChildless(superClass);
     } else {
+      validateFeature(Feature.CLASS_EXTENDS, n);
       validateExpression(superClass);
     }
 
@@ -732,17 +770,16 @@ public final class AstValidator implements CompilerPass {
     switch (n.getToken()) {
       case MEMBER_FUNCTION_DEF:
         validateFeature(Feature.MEMBER_DECLARATIONS, n);
-        // fall through
-      case GETTER_DEF:
-      case SETTER_DEF:
         validateObjectLiteralKeyName(n);
         validateChildCount(n);
-        Node function = n.getFirstChild();
-        if (isAmbient) {
-          validateFunctionSignature(function);
-        } else {
-          validateFunctionExpression(function);
-        }
+        validateMemberFunction(n, isAmbient);
+        break;
+      case GETTER_DEF:
+      case SETTER_DEF:
+        validateFeature(Feature.CLASS_GETTER_SETTER, n);
+        validateObjectLiteralKeyName(n);
+        validateChildCount(n);
+        validateMemberFunction(n, isAmbient);
         break;
       case MEMBER_VARIABLE_DEF:
         validateChildless(n);
@@ -761,6 +798,15 @@ public final class AstValidator implements CompilerPass {
         break;
       default:
         violation("Class contained member of invalid type " + n.getToken(), n);
+    }
+  }
+
+  private void validateMemberFunction(Node n, boolean isAmbient) {
+    Node function = n.getFirstChild();
+    if (isAmbient) {
+      validateFunctionSignature(function);
+    } else {
+      validateFunctionExpression(function);
     }
   }
 
@@ -894,6 +940,9 @@ public final class AstValidator implements CompilerPass {
     if (n.isAsyncFunction()) {
       validateFeature(Feature.ASYNC_FUNCTIONS, n);
     }
+    if (n.isAsyncFunction() && n.isGeneratorFunction()) {
+      validateFeature(Feature.ASYNC_GENERATORS, n);
+    }
   }
 
   private void validateFunctionBody(Node n, boolean noBlock) {
@@ -910,6 +959,7 @@ public final class AstValidator implements CompilerPass {
       if (c.isRest()) {
         validateRestParameters(Token.PARAM_LIST, c);
       } else if (c.isDefaultValue()) {
+        validateFeature(Feature.DEFAULT_PARAMETERS, c);
         validateDefaultValue(Token.PARAM_LIST, c);
       } else {
         if (c.isName()) {
@@ -924,7 +974,6 @@ public final class AstValidator implements CompilerPass {
   }
 
   private void validateDefaultValue(Token contextType, Node n) {
-    validateFeature(Feature.DEFAULT_PARAMETERS, n);
     validateChildCount(n);
     validateLHS(contextType, n.getFirstChild());
     validateExpression(n.getLastChild());
@@ -1093,7 +1142,7 @@ public final class AstValidator implements CompilerPass {
   }
 
   private void validateArrayPattern(Token type, Node n) {
-    validateFeature(Feature.DESTRUCTURING, n);
+    validateFeature(Feature.ARRAY_DESTRUCTURING, n);
     validateNodeType(Token.ARRAY_PATTERN, n);
     for (Node c = n.getFirstChild(); c != null; c = c.getNext()) {
       switch (c.getToken()) {
@@ -1113,7 +1162,7 @@ public final class AstValidator implements CompilerPass {
   }
 
   private void validateObjectPattern(Token type, Node n) {
-    validateFeature(Feature.DESTRUCTURING, n);
+    validateFeature(Feature.OBJECT_DESTRUCTURING, n);
     validateNodeType(Token.OBJECT_PATTERN, n);
     for (Node c = n.getFirstChild(); c != null; c = c.getNext()) {
       switch (c.getToken()) {
@@ -1152,6 +1201,15 @@ public final class AstValidator implements CompilerPass {
   private void validateForOf(Node n) {
     validateFeature(Feature.FOR_OF, n);
     validateNodeType(Token.FOR_OF, n);
+    validateChildCount(n);
+    validateVarOrAssignmentTarget(n.getFirstChild());
+    validateExpression(n.getSecondChild());
+    validateBlock(n.getLastChild());
+  }
+
+  private void validateForAwaitOf(Node n) {
+    validateFeature(Feature.FOR_AWAIT_OF, n);
+    validateNodeType(Token.FOR_AWAIT_OF, n);
     validateChildCount(n);
     validateVarOrAssignmentTarget(n.getFirstChild());
     validateExpression(n.getSecondChild());
@@ -1278,10 +1336,19 @@ public final class AstValidator implements CompilerPass {
       validateName(caught);
     } else if (caught.isArrayPattern()) {
       validateArrayPattern(Token.CATCH, caught);
-    } else {
+    } else if (caught.isObjectPattern()) {
       validateObjectPattern(Token.CATCH, caught);
+    } else if (caught.isEmpty()) {
+      validateNoCatchBinding(caught);
+    } else {
+      violation("Unexpected catch binding: " + caught, n);
     }
     validateBlock(n.getLastChild());
+  }
+
+  private void validateNoCatchBinding(Node n) {
+    validateFeature(Feature.OPTIONAL_CATCH_BINDING, n);
+    validateChildCount(n);
   }
 
   private void validateSwitch(Node n) {
@@ -1748,4 +1815,3 @@ public final class AstValidator implements CompilerPass {
     }
   }
 }
-

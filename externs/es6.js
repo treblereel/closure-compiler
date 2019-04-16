@@ -144,13 +144,12 @@ Math.sign = function(value) {};
 Math.cbrt = function(value) {};
 
 /**
- * @param {number} value1
  * @param {...number} var_args
  * @return {number}
  * @nosideeffects
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/hypot
  */
-Math.hypot = function(value1, var_args) {};
+Math.hypot = function(var_args) {};
 
 /**
  * @param {number} value1
@@ -168,6 +167,14 @@ Math.imul = function(value1, value2) {};
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/clz32
  */
 Math.clz32 = function(value) {};
+
+/**
+ * @param {number} value
+ * @return {number}
+ * @nosideeffects
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/fround
+ */
+Math.fround = function(value) {};
 
 
 /**
@@ -310,6 +317,23 @@ String.prototype.endsWith = function(searchString, opt_position) {};
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/includes
  */
 String.prototype.includes = function(searchString, opt_position) {};
+
+/**
+ * @this {String|string}
+ * @return {string}
+ * @nosideeffects
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/trimStart
+ */
+String.prototype.trimStart = function() {};
+
+
+/**
+ * @this {String|string}
+ * @return {string}
+ * @nosideeffects
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/trimEnd
+ */
+String.prototype.trimEnd = function() {};
 
 
 /**
@@ -658,7 +682,7 @@ function Int8Array(length, opt_byteOffset, opt_length) {}
 Int8Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -691,7 +715,7 @@ function Uint8Array(length, opt_byteOffset, opt_length) {}
 Uint8Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -724,7 +748,7 @@ function Uint8ClampedArray(length, opt_byteOffset, opt_length) {}
 Uint8ClampedArray.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -766,7 +790,7 @@ function Int16Array(length, opt_byteOffset, opt_length) {}
 Int16Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -799,7 +823,7 @@ function Uint16Array(length, opt_byteOffset, opt_length) {}
 Uint16Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -832,7 +856,7 @@ function Int32Array(length, opt_byteOffset, opt_length) {}
 Int32Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -865,7 +889,7 @@ function Uint32Array(length, opt_byteOffset, opt_length) {}
 Uint32Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -898,7 +922,7 @@ function Float32Array(length, opt_byteOffset, opt_length) {}
 Float32Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -931,7 +955,7 @@ function Float64Array(length, opt_byteOffset, opt_length) {}
 Float64Array.BYTES_PER_ELEMENT;
 
 /**
- * @param {!Array<number>} source
+ * @param {string|!IArrayLike<number>|!Iterable<number>} source
  * @param {function(this:S, number): number=} opt_mapFn
  * @param {S=} opt_this
  * @template S
@@ -1118,8 +1142,8 @@ function IThenable() {}
  * @return {RESULT}
  * @template VALUE
  *
- * When a Promise (or thenable) is returned from the fulfilled callback,
- * the result is the payload of that promise, not the promise itself.
+ * When a `Thenable` is fulfilled or rejected with another `Thenable`, the
+ * payload of the second is used as the payload of the first.
  *
  * @template RESULT := type('IThenable',
  *     cond(isUnknown(VALUE), unknown(),
@@ -1208,8 +1232,8 @@ Promise.race = function(iterable) {};
  * @return {RESULT}
  * @template VALUE
  *
- * When a Promise (or thenable) is returned from the fulfilled callback,
- * the result is the payload of that promise, not the promise itself.
+ * When a `Thenable` is fulfilled or rejected with another `Thenable`, the
+ * payload of the second is used as the payload of the first.
  *
  * @template RESULT := type('Promise',
  *     cond(isUnknown(VALUE), unknown(),
@@ -1226,9 +1250,27 @@ Promise.prototype.then = function(opt_onFulfilled, opt_onRejected) {};
 
 
 /**
- * @param {function(*): RESULT} onRejected
- * @return {!Promise<RESULT>}
- * @template RESULT
+ * @param {function(*):VALUE} onRejected
+ * @return {!Promise<TYPE|RESULT>} A Promise of the original type or a possibly
+ *     a different type depending on whether the parent promise was rejected.
+ *
+ * @template VALUE
+ *
+ * When a `Thenable` is rejected with another `Thenable`, the payload of the
+ * second is used as the payload of the first.
+ *
+ * @template RESULT := cond(
+ *     isUnknown(VALUE),
+ *     unknown(),
+ *     mapunion(VALUE, (V) =>
+ *         cond(
+ *             isTemplatized(V) && sub(rawTypeOf(V), 'IThenable'),
+ *             templateTypeOf(V, 0),
+ *             cond(
+ *                 sub(V, 'Thenable'),
+ *                 unknown(),
+ *                 V))))
+ * =:
  */
 Promise.prototype.catch = function(onRejected) {};
 
@@ -1335,6 +1377,27 @@ Array.prototype.copyWithin = function(target, start, opt_end) {};
  */
 Array.prototype.includes = function(searchElement, opt_fromIndex) {};
 
+/**
+ * NOTE: this is a stage 3 proposal extern.
+ * @param {function(this: THIS, T, number, !IArrayLike<T>): S|!Array<S>}
+ *     callback
+ * @param {THIS=} thisArg
+ * @return {!Array<S>}
+ * @this {!IArrayLike<T>}
+ * @template T, THIS, S
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/flatMap
+ */
+Array.prototype.flatMap = function(callback, thisArg) {};
+
+/**
+ * NOTE: this is a stage 3 proposal extern.
+ * @param {*=} depth
+ * @return {!Array<S>}
+ * @this {!IArrayLike<T>}
+ * @template T, S
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/flat
+ */
+Array.prototype.flat = function(depth) {};
 
 /**
  * @param {!Object} obj
@@ -1456,6 +1519,13 @@ Object.values = function(obj) {};
  * @template T
  */
 Object.entries = function(obj) {};
+
+/**
+ * @param {!Iterable<*>} iter
+ * @return {!Object}
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/fromEntries
+ */
+Object.fromEntries = function(iter) {};
 
 /**
  * NOTE: this is an ES2017 (ES8) extern.
@@ -1702,7 +1772,6 @@ Symbol.asyncIterator;
 
 /**
  * @interface
- * @extends {AsyncIterable<VALUE>}
  * @template VALUE
  * @see https://tc39.github.io/proposal-async-iteration/
  */
@@ -1727,10 +1796,20 @@ function AsyncIterable() {}
  */
 AsyncIterable.prototype[Symbol.asyncIterator] = function() {};
 
+
+/**
+ * @interface
+ * @extends {AsyncIterator<VALUE>}
+ * @extends {AsyncIterable<VALUE>}
+ * @template VALUE
+ * @see https://tc39.github.io/proposal-async-iteration/
+ */
+function AsyncIteratorIterable() {}
+
 /**
  * @interface
  * @see https://tc39.github.io/proposal-async-iteration/
- * @extends {AsyncIterator<VALUE>}
+ * @extends {AsyncIteratorIterable<VALUE>}
  * @template VALUE
  */
 function AsyncGenerator() {}

@@ -16,10 +16,15 @@
 
 package com.google.javascript.jscomp;
 
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
+
 /**
  * Unit tests for {@link OptimizeArgumentsArray}.
  *
  */
+@RunWith(JUnit4.class)
 public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
 
   public OptimizeArgumentsArrayTest() {
@@ -38,12 +43,14 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
     return new OptimizeArgumentsArray(compiler, "p");
   }
 
+  @Test
   public void testSimple() {
     test(
       "function foo()   { alert(arguments[0]); }",
       "function foo(p0) { alert(          p0); }");
   }
 
+  @Test
   public void testNoVarArgs() {
     testSame("function f(a,b,c) { alert(a + b + c) }");
 
@@ -52,36 +59,43 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
         "function f(a,b,c) { alert(           a) }");
   }
 
+  @Test
   public void testMissingVarArgs() {
     testSame("function f() { alert(arguments[x]) }");
   }
 
+  @Test
   public void testArgumentRefOnNamedParameter() {
     test("function f(a,b) { alert(arguments[0]) }",
          "function f(a,b) { alert(a) }");
   }
 
+  @Test
   public void testTwoVarArgs() {
     test(
         "function foo(a)         { alert(arguments[1] + arguments[2]); }",
         "function foo(a, p0, p1) { alert(          p0 +           p1); }");
   }
 
+  @Test
   public void testTwoFourArgsTwoUsed() {
     test("function foo() { alert(arguments[0] + arguments[3]); }",
          "function foo(p0, p1, p2, p3) { alert(p0 + p3); }");
   }
 
+  @Test
   public void testOneRequired() {
     test("function foo(req0, var_args) { alert(req0 + arguments[1]); }",
          "function foo(req0, var_args) { alert(req0 + var_args); }");
   }
 
+  @Test
   public void testTwoRequiredSixthVarArgReferenced() {
     test("function foo(r0, r1, var_args) {alert(r0 + r1 + arguments[5]);}",
          "function foo(r0, r1, var_args, p0, p1, p2) { alert(r0 + r1 + p2); }");
   }
 
+  @Test
   public void testTwoRequiredOneOptionalFifthVarArgReferenced() {
     test("function foo(r0, r1, opt_1)"
        + "  {alert(r0 + r1 + opt_1 + arguments[4]);}",
@@ -89,6 +103,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
        + "  {alert(r0 + r1 + opt_1 + p1); }");
   }
 
+  @Test
   public void testTwoRequiredTwoOptionalSixthVarArgReferenced() {
     test("function foo(r0, r1, opt_1, opt_2)"
        + "  {alert(r0 + r1 + opt_1 + opt_2 + arguments[5]);}",
@@ -96,6 +111,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
        + "  {alert(r0 + r1 + opt_1 + opt_2 + p1); }");
   }
 
+  @Test
   public void testInnerFunctions() {
     test("function f() { function b(  ) { arguments[0]  }}",
          "function f() { function b(p0) {            p0 }}");
@@ -107,6 +123,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
          "function f(p1) {           p1; function b(p0) {           p0 }}");
   }
 
+  @Test
   public void testInnerFunctionsWithNamedArgumentInInnerFunction() {
     test("function f() { function b(x   ) { arguments[1] }}",
          "function f() { function b(x,p0) {           p0 }}");
@@ -118,6 +135,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
          "function f(p1) {           p1; function b(x,p0) {           p0 }}");
   }
 
+  @Test
   public void testInnerFunctionsWithNamedArgumentInOutterFunction() {
     test("function f(x) { function b(  ) { arguments[0] }}",
          "function f(x) { function b(p0) {           p0 }}");
@@ -129,6 +147,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
          "function f(x,p1) {           p1; function b(p0) {           p0 }}");
   }
 
+  @Test
   public void testInnerFunctionsWithNamedArgumentInInnerAndOutterFunction() {
     test("function f(x) { function b(x   ) { arguments[1] }}",
          "function f(x) { function b(x,p0) {           p0 }}");
@@ -140,6 +159,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
          "function f(x,p1) {           p1; function b(x,p0) {           p0 }}");
   }
 
+  @Test
   public void testInnerFunctionsAfterArguments() {
     // This caused a bug earlier due to incorrect push and pop of the arguments
     // access stack.
@@ -147,20 +167,29 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
          "function f(p0) {           p0; function b() { function c() { }} }");
   }
 
+  @Test
   public void testNoOptimizationWhenGetProp() {
     testSame("function f() { arguments[0]; arguments.size }");
   }
 
+  @Test
   public void testNoOptimizationWhenIndexIsNotNumberConstant() {
     testSame("function f() { arguments[0]; arguments['callee'].length}");
     testSame("function f() { arguments[0]; arguments.callee.length}");
     testSame("function f() { arguments[0]; var x = 'callee'; arguments[x].length}");
   }
 
+  @Test
   public void testDecimalArgumentIndex() {
     testSame("function f() { arguments[0.5]; }");
   }
 
+  @Test
+  public void testNegativeArgumentIndex() {
+    testSame("function badFunction() { arguments[-1]; }");
+  }
+
+  @Test
   public void testArrowFunctions() {
 
     // simple
@@ -186,6 +215,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
         "function f(p0, p1) { (req0, var_args) => alert(req0 +           p1); }");
   }
 
+  @Test
   public void testArrowFunctionIsInnerFunction() {
 
     test(
@@ -198,6 +228,40 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
         "function f(p0) {           p0; ( ) => {           p0 } }");
   }
 
+  @Test
+  public void testArrowFunctionInInnerFunctionUsingArguments() {
+    // See https://github.com/google/closure-compiler/issues/3195
+    test(
+        lines(
+            "function f() {",
+            "  function g() {",
+            "    arguments[0].map((v) => v.error);",
+            "  };",
+            "}"),
+        lines(
+            "function f() {", //
+            "  function g(p0) {",
+            "    p0.map((v) => v.error);",
+            "  };",
+            "}"));
+  }
+
+  @Test
+  public void testArgumentsReferenceInFunctionAndArrow() {
+    test(
+        lines(
+            "function f() {", //
+            "  arguments[0];",
+            "  return () => arguments[0];",
+            "}"),
+        lines(
+            "function f(p0) {", //
+            "  p0;",
+            "  return () => p0;",
+            "}"));
+  }
+
+  @Test
   public void testArrowFunctionDeclaration() {
 
     test(
@@ -205,6 +269,7 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
         "function f(p0) { var f = ( ) => { alert(          p0); } }");
   }
 
+  @Test
   public void testNestedFunctions() {
     //Arrow inside arrow inside vanilla function
 
@@ -222,15 +287,69 @@ public final class OptimizeArgumentsArrayTest extends CompilerTestCase {
 
   }
 
+  @Test
   public void testNoOptimizationWhenArgumentIsUsedAsFunctionCall() {
-    testSame("function f() {arguments[0]()}");
+    testSame("function f() {arguments[0]()}"); // replacing the call would change `this`
   }
 
+  @Test
+  public void testNoOptimizationWhenArgumentsReassigned() {
+    // replacing the post-assignment `arguments[0]` with a named parameter would be incorrect
+    testSame("function f() { arguments[0]; arguments = [3, 4, 5]; arguments[0]; }");
+  }
+
+  @Test
   public void testUnusualArgumentsUsage() {
     testSame("function f(x) { x[arguments]; }");
   }
 
-  public void testNegativeIndexNoCrash() {
-    testSame("function badFunction() { arguments[-1]; }");
+  @Test
+  public void testUseArguments_withDefaultValue() {
+    // `arguments` doesn't consider default values. It holds exaclty the provided args.
+    testSame("function f(x = 0) { arguments[0]; }");
+
+    test(
+        "function f(x = 0) { arguments[1]; }", //
+        "function f(x = 0, p0) { p0; }");
+  }
+
+  @Test
+  public void testUseArguments_withRestParam() {
+    test(
+        "function f(x, ...rest) { arguments[0]; }", //
+        "function f(x, ...rest) { x; }");
+
+    // We could possibly do better here by referencing through `rest` instead, but the additional
+    // complexity of tracking and validating the rest parameter isn't worth it.
+    testSame("function f(x, ...rest) { arguments[1]; }");
+    testSame("function f(x, ...rest) { arguments[2]; }"); // Don't synthesize params after a rest.
+  }
+
+  @Test
+  public void testUseArguments_withArrayDestructuringParam() {
+    testSame("function f([x, y]) { arguments[0]; }");
+
+    test(
+        "function f([x, y]) { arguments[1]; }", //
+        "function f([x, y], p0) { p0; }");
+  }
+
+  @Test
+  public void testUseArguments_withObjectDestructuringParam() {
+    test(
+        "function f({x: y}) { arguments[1]; }", //
+        "function f({x: y}, p0) { p0; }");
+
+    testSame("function f({x: y}) { arguments[0]; }");
+  }
+
+  @Test
+  public void testGlobalArgumentsReferences() {
+    testSame("arguments;");
+    testSame(
+        lines(
+            "if (typeof arguments != \"undefined\") {", //
+            "  console.log(arguments);",
+            "}"));
   }
 }

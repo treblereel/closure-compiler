@@ -317,6 +317,11 @@ SinonSpy.prototype.invokeCallback = function(args) {};
  */
 SinonSpy.prototype.getCall = function(n) {};
 
+/**
+ * @return {!Array<!SinonSpyCall>}
+ */
+SinonSpy.prototype.getCalls = function() {};
+
 SinonSpy.prototype.reset = function() {};
 
 /**
@@ -812,7 +817,10 @@ SinonFakeServer.prototype.restore = function() {};
  */
 SinonFakeServer.prototype.respondWith = function(var_args) {};
 
-
+/**
+ * @return {!SinonFakeXmlHttpRequest}
+ */
+sinon.useFakeXMLHttpRequest = function() {};
 
 /**
  * @constructor
@@ -846,6 +854,8 @@ SinonFakeXmlHttpRequest.prototype.url;
  * @param {?string} body
  */
 SinonFakeXmlHttpRequest.prototype.respond = function(status, headers, body) {};
+
+SinonFakeXmlHttpRequest.prototype.restore = function() {};
 
 
 

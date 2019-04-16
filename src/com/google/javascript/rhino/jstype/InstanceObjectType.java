@@ -55,21 +55,22 @@ class InstanceObjectType extends PrototypeObjectType {
     this(registry, constructor, false);
   }
 
-  InstanceObjectType(JSTypeRegistry registry, FunctionType constructor,
-                     boolean isNativeType) {
-    super(registry, null, null, isNativeType, constructor.getTemplateTypeMap());
-    checkNotNull(constructor);
-    this.constructor = constructor;
+  InstanceObjectType(JSTypeRegistry registry, FunctionType constructor, boolean isNativeType) {
+    this(registry, constructor, isNativeType, constructor.getTemplateTypeMap());
+  }
+
+  InstanceObjectType(
+      JSTypeRegistry registry,
+      FunctionType constructor,
+      boolean isNativeType,
+      TemplateTypeMap templateTypeMap) {
+    super(registry, null, null, isNativeType, templateTypeMap);
+    this.constructor = checkNotNull(constructor);
   }
 
   @Override
   public String getReferenceName() {
     return getConstructor().getReferenceName();
-  }
-
-  @Override
-  public boolean hasReferenceName() {
-    return getConstructor().hasReferenceName();
   }
 
   @Override
@@ -103,9 +104,10 @@ class InstanceObjectType extends PrototypeObjectType {
     if (name.isEmpty()) {
       Node n = constructor.getSource();
       return sb.append("<anonymous@")
-          .append(n.getSourceFileName())
+          .append(n != null ? n.getSourceFileName() : "unknown")
           .append(":")
-          .append(n.getLineno()).append(">");
+          .append(n != null ? n.getLineno() : 0)
+          .append(">");
     }
     return sb.append(name);
   }
@@ -184,6 +186,11 @@ class InstanceObjectType extends PrototypeObjectType {
   @Override
   public Iterable<ObjectType> getCtorExtendedInterfaces() {
     return getConstructor().getExtendedInterfaces();
+  }
+
+  @Override
+  public boolean isAmbiguousObject() {
+    return getConstructor().createsAmbiguousObjects();
   }
 
   // The owner will always be a resolved type, so there's no need to set

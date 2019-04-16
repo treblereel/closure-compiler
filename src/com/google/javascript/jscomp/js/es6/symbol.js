@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
+/**
+ * @fileoverview Symbol polyfill.
+ * @suppress {uselessCode}
+ */
+
+'require es6/util/arrayiterator';
 'require util/defineproperty';
 'require util/global';
 
 /** @const {string} */
 $jscomp.SYMBOL_PREFIX = 'jscomp_symbol_';
-
 
 /**
  * Initializes the Symbol function.
@@ -36,24 +41,54 @@ $jscomp.initSymbol = function() {
 
 
 /**
+ * @struct @constructor
+ * @param {string} id
+ * @param {string=} opt_description
+ */
+$jscomp.SymbolClass = function(id, opt_description) {
+  /** @private @const {string} */
+  this.$jscomp$symbol$id_ = id;
+
+  /** @const {string|undefined} */
+  this.description;
+
+  // description is read-only.
+  $jscomp.defineProperty(
+      this, 'description',
+      {configurable: true, writable: true, value: opt_description});
+};
+
+
+/** @override */
+$jscomp.SymbolClass.prototype.toString = function() {
+  return this.$jscomp$symbol$id_;
+};
+
+
+/**
  * Produces "symbols" (actually just unique strings).
  * @param {string=} opt_description
  * @return {symbol}
  */
 $jscomp.Symbol = /** @type {function(): !Function} */ (function() {
   var counter = 0;
+
   /**
    * @param {string=} opt_description
    * @return {symbol}
    * @suppress {reportUnknownTypes}
    */
   function Symbol(opt_description) {
-    return /** @type {?} */ (
-        $jscomp.SYMBOL_PREFIX + (opt_description || '') + (counter++));
+    if (/** @type {?} */ (this) instanceof Symbol) {
+      throw new TypeError('Symbol is not a constructor');
+    }
+    return /** @type {?} */ (new $jscomp.SymbolClass(
+        $jscomp.SYMBOL_PREFIX + (opt_description || '') + '_' + (counter++),
+        opt_description));
   }
+
   return Symbol;
 })();
-
 
 /**
  * Initializes Symbol.iterator (if it's not already defined) and adds a
@@ -65,7 +100,7 @@ $jscomp.initSymbolIterator = function() {
   var symbolIterator = $jscomp.global['Symbol'].iterator;
   if (!symbolIterator) {
     symbolIterator = $jscomp.global['Symbol'].iterator =
-        $jscomp.global['Symbol']('iterator');
+        $jscomp.global['Symbol']('Symbol.iterator');
   }
 
   if (typeof Array.prototype[symbolIterator] != 'function') {
@@ -78,7 +113,8 @@ $jscomp.initSymbolIterator = function() {
            * @return {!IteratorIterable}
            */
           value: function() {
-            return $jscomp.arrayIterator(this);
+            return $jscomp.iteratorPrototype(
+                $jscomp.arrayIteratorImpl(this));
           }
         });
   }
@@ -89,25 +125,20 @@ $jscomp.initSymbolIterator = function() {
 
 
 /**
- * Returns an iterator from the given array.
- * @param {!Array<T>} array
- * @return {!IteratorIterable<T>}
- * @template T
+ * Initializes Symbol.asyncIterator (if it's not already defined)
+ * @suppress {reportUnknownTypes}
  */
-$jscomp.arrayIterator = function(array) {
-  var index = 0;
-  return $jscomp.iteratorPrototype(function() {
-    if (index < array.length) {
-      return {
-        done: false,
-        value: array[index++],
-      };
-    } else {
-      return {done: true};
-    }
-  });
-};
+$jscomp.initSymbolAsyncIterator = function() {
+  $jscomp.initSymbol();
+  var symbolAsyncIterator = $jscomp.global['Symbol'].asyncIterator;
+  if (!symbolAsyncIterator) {
+    symbolAsyncIterator = $jscomp.global['Symbol'].asyncIterator =
+        $jscomp.global['Symbol']('Symbol.asyncIterator');
+  }
 
+  // Only need to do this once. All future calls are no-ops.
+  $jscomp.initSymbolAsyncIterator = function() {};
+};
 
 /**
  * Returns an iterator with the given `next` method.  Passing
@@ -128,6 +159,8 @@ $jscomp.iteratorPrototype = function(next) {
    * @this {IteratorIterable}
    * @return {!IteratorIterable}
    */
-  iterator[$jscomp.global['Symbol'].iterator] = function() { return this; };
+  iterator[$jscomp.global['Symbol'].iterator] = function() {
+    return this;
+  };
   return /** @type {!IteratorIterable} */ (iterator);
 };

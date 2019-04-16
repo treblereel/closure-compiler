@@ -18,24 +18,24 @@ package com.google.javascript.jscomp;
 
 import static com.google.common.base.Preconditions.checkState;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.javascript.jscomp.Es6SyntacticScopeCreator.RedeclarationHandler;
-import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
 import com.google.javascript.jscomp.NodeTraversal.Callback;
+import com.google.javascript.jscomp.NodeTraversal.ScopedCallback;
 import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.JSDocInfoBuilder;
 import com.google.javascript.rhino.Node;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * Checks that all variables are declared, that file-private variables are
- * accessed only in the file that declares them, and that any var references
- * that cross module boundaries respect declared module dependencies.
+ * Checks that all variables are declared, that file-private variables are accessed only in the file
+ * that declares them, and that any var references that cross module boundaries respect declared
+ * module dependencies.
  *
  */
-class VarCheck extends AbstractPostOrderCallback implements
-    HotSwapCompilerPass {
+class VarCheck implements ScopedCallback, HotSwapCompilerPass {
 
   static final DiagnosticType UNDEFINED_VAR_ERROR = DiagnosticType.error(
       "JSC_UNDEFINED_VARIABLE",
@@ -93,7 +93,7 @@ class VarCheck extends AbstractPostOrderCallback implements
   // Vars that still need to be declared in externs. These will be declared
   // at the end of the pass, or when we see the equivalent var declared
   // in the normal code.
-  private final Set<String> varsToDeclareInExterns = new HashSet<>();
+  private final Set<String> varsToDeclareInExterns = new LinkedHashSet<>();
 
   private final AbstractCompiler compiler;
 
@@ -143,8 +143,9 @@ class VarCheck extends AbstractPostOrderCallback implements
 
     NodeTraversal t = new NodeTraversal(compiler, this, scopeCreator);
     t.traverseRoots(externs, root);
+
     for (String varName : varsToDeclareInExterns) {
-      createSynthesizedExternVar(varName);
+      createSynthesizedExternVar(compiler, varName);
     }
 
     if (dupHandler != null) {
@@ -162,6 +163,11 @@ class VarCheck extends AbstractPostOrderCallback implements
     Scope topScope = scopeCreator.createScope(compiler.getRoot(), null);
     t.traverseWithScope(scriptRoot, topScope);
     // TODO(bashir) Check if we need to createSynthesizedExternVar like process.
+  }
+
+  @Override
+  public boolean shouldTraverse(NodeTraversal t, Node n, Node parent) {
+    return true;
   }
 
   @Override
@@ -184,10 +190,14 @@ class VarCheck extends AbstractPostOrderCallback implements
         return;
       }
 
-      // Check if this is a declaration for a var that has been declared
-      // elsewhere. If so, mark it as a duplicate.
-      if ((parent.isVar()
-           || NodeUtil.isFunctionDeclaration(parent))
+      Scope scope = t.getScope();
+      Var var = scope.getVar(varName);
+      Scope varScope = var != null ? var.getScope() : null;
+
+      // Check if this variable is reference in the externs, if so mark it as a duplicate.
+      if (varScope != null
+          && varScope.isGlobal()
+          && (parent.isVar() || NodeUtil.isFunctionDeclaration(parent))
           && varsToDeclareInExterns.contains(varName)) {
         createSynthesizedExternVar(varName);
 
@@ -197,8 +207,6 @@ class VarCheck extends AbstractPostOrderCallback implements
       }
 
       // Check that the var has been declared.
-      Scope scope = t.getScope();
-      Var var = scope.getVar(varName);
       if (var == null) {
         if ((NodeUtil.isFunctionExpression(parent) || NodeUtil.isClassExpression(parent))
             && n == parent.getFirstChild()) {
@@ -208,9 +216,9 @@ class VarCheck extends AbstractPostOrderCallback implements
           // e.g. "export {a as b}" or "import {b as a} from './foo.js'
           // where b is defined in a module's export entries but not in any module scope.
         } else {
-          boolean isArguments = scope.isFunctionScope() && ARGUMENTS.equals(varName);
+          boolean isTypeOf = parent.isTypeOf();
           // The extern checks are stricter, don't report a second error.
-          if (!isArguments && !(strictExternCheck && t.getInput().isExtern())) {
+          if (!isTypeOf && !(strictExternCheck && t.getInput().isExtern())) {
             t.report(n, UNDEFINED_VAR_ERROR, varName);
           }
 
@@ -263,6 +271,54 @@ class VarCheck extends AbstractPostOrderCallback implements
       }
     }
   }
+
+  @Override
+  public void enterScope(NodeTraversal t) {}
+
+  @Override
+  public void exitScope(NodeTraversal t) {
+    if (!validityCheck && t.inGlobalScope()) {
+      Scope scope = t.getScope();
+      // Add symbols that are known to be needed to the standard injected code (polyfills, etc).
+      for (String requiredSymbol : REQUIRED_SYMBOLS) {
+        Var var = scope.getVar(requiredSymbol);
+        if (var == null) {
+          varsToDeclareInExterns.add(requiredSymbol);
+        }
+      }
+    }
+  }
+
+  /**
+   * List of symbols that must always be externed even if they are not referenced anywhere (yet).
+   * These are used by runtime libraries that might not be present when the first VarCheck runs.
+   */
+  static final ImmutableSet<String> REQUIRED_SYMBOLS =
+      ImmutableSet.of(
+          "Array",
+          "Error",
+          "Float32Array",
+          "Function",
+          "Infinity",
+          "Map",
+          "Math",
+          "Number",
+          "Object",
+          "Promise",
+          "RangeError",
+          "Reflect",
+          "RegExp",
+          "Set",
+          "String",
+          "Symbol",
+          "TypeError",
+          "WeakMap",
+          "global",
+          "isNaN",
+          "parseFloat",
+          "parseInt",
+          "undefined",
+          "window");
 
   /**
    * Create a new variable in a synthetic script. This will prevent

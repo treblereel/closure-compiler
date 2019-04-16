@@ -21,6 +21,7 @@ import static com.google.common.base.Preconditions.checkState;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet;
 import com.google.javascript.rhino.Node;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,6 +38,12 @@ import java.util.logging.Logger;
  * @author dimvar@google.com (Dimitris Vardoulakis)
  */
 class PhaseOptimizer implements CompilerPass {
+
+  static final DiagnosticType FEATURES_NOT_SUPPORTED_BY_PASS =
+      DiagnosticType.error(
+          "JSC_FEATURES_NOT_SUPPORTED_BY_PASS",
+          "Attempted to run pass \"{0}\" on input with features it does not support. {1}\n"
+              + "Unsupported features: {2}");
 
   private static final Logger logger = Logger.getLogger(PhaseOptimizer.class.getName());
   private final AbstractCompiler compiler;
@@ -276,12 +283,30 @@ class PhaseOptimizer implements CompilerPass {
 
     @Override
     public void process(Node externs, Node root) {
-      if (!factory.featureSet().contains(compiler.getFeatureSet())) {
-        logger.warning("Skipping pass " + name);
-        logger.info(
-            "pass supports: " + factory.featureSet()
-                + "\ncurrent AST contains: " + compiler.getFeatureSet());
-        return;
+      FeatureSet featuresInAst = compiler.getFeatureSet();
+      FeatureSet featuresSupportedByPass = factory.featureSet();
+
+      if (!featuresSupportedByPass.contains(featuresInAst)) {
+        FeatureSet unsupportedFeatures = featuresInAst.without(featuresSupportedByPass);
+
+        if (compiler.getOptions().shouldSkipUnsupportedPasses()) {
+          compiler.report(
+              JSError.make(
+                  CheckLevel.WARNING,
+                  FEATURES_NOT_SUPPORTED_BY_PASS,
+                  name,
+                  "Skipping pass.",
+                  unsupportedFeatures.toString()));
+          return;
+        } else {
+          compiler.report(
+              JSError.make(
+                  CheckLevel.ERROR,
+                  FEATURES_NOT_SUPPORTED_BY_PASS,
+                  name,
+                  "Running pass anyway.",
+                  unsupportedFeatures.toString()));
+        }
       }
 
       logger.fine("Running pass " + name);

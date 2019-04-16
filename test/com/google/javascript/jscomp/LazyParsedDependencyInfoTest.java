@@ -23,14 +23,15 @@ import com.google.javascript.jscomp.deps.DependencyInfo;
 import com.google.javascript.jscomp.deps.DependencyInfo.Require;
 import com.google.javascript.jscomp.deps.ModuleLoader;
 import com.google.javascript.jscomp.deps.SimpleDependencyInfo;
-import java.util.Arrays;
-import junit.framework.TestCase;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@link LazyParsedDependencyInfo}.
- */
-public final class LazyParsedDependencyInfoTest extends TestCase {
+/** Tests for {@link LazyParsedDependencyInfo}. */
+@RunWith(JUnit4.class)
+public final class LazyParsedDependencyInfoTest {
 
+  @Test
   public void testDelegation() {
     Require baz = Require.googRequireSymbol("baz");
     Require qux = Require.googRequireSymbol("qux");
@@ -49,6 +50,7 @@ public final class LazyParsedDependencyInfoTest extends TestCase {
     assertThat(info.getRequires()).containsExactly(baz, qux);
   }
 
+  @Test
   public void testLoadFlagsParsesEs3() {
     Compiler compiler = new Compiler();
     compiler.initOptions(new CompilerOptions());
@@ -65,9 +67,10 @@ public final class LazyParsedDependencyInfoTest extends TestCase {
     // is lifted and we can depend on a newer Truth, these assertions should be
     // changed to assertThat(info.getLoadFlags()).containsExactly(...)
     assertThat(info.getLoadFlags()).containsExactly("foo", "bar");
-    assertFalse(info.isModule());
+    assertThat(info.isModule()).isFalse();
   }
 
+  @Test
   public void testLoadFlagsParsesEs5() {
     Compiler compiler = new Compiler();
     compiler.initOptions(new CompilerOptions());
@@ -79,9 +82,10 @@ public final class LazyParsedDependencyInfoTest extends TestCase {
     DependencyInfo info = new LazyParsedDependencyInfo(delegate, ast, compiler);
 
     assertThat(info.getLoadFlags()).containsExactly("module", "goog", "lang", "es5");
-    assertTrue(info.isModule());
+    assertThat(info.isModule()).isTrue();
   }
 
+  @Test
   public void testLoadFlagsParsesEs6Impl() {
     Compiler compiler = new Compiler();
     compiler.initOptions(new CompilerOptions());
@@ -93,9 +97,10 @@ public final class LazyParsedDependencyInfoTest extends TestCase {
     DependencyInfo info = new LazyParsedDependencyInfo(delegate, ast, compiler);
 
     assertThat(info.getLoadFlags()).containsExactly("foo", "bar", "lang", "es6");
-    assertFalse(info.isModule());
+    assertThat(info.isModule()).isFalse();
   }
 
+  @Test
   public void testLoadFlagsParsesEs6() {
     Compiler compiler = new Compiler();
     compiler.initOptions(new CompilerOptions());
@@ -107,9 +112,10 @@ public final class LazyParsedDependencyInfoTest extends TestCase {
     DependencyInfo info = new LazyParsedDependencyInfo(delegate, ast, compiler);
 
     assertThat(info.getLoadFlags()).containsExactly("foo", "bar", "lang", "es6");
-    assertFalse(info.isModule());
+    assertThat(info.isModule()).isFalse();
   }
 
+  @Test
   public void testParseIsLazy() {
     Compiler compiler = new Compiler();
     compiler.initOptions(new CompilerOptions());
@@ -128,6 +134,7 @@ public final class LazyParsedDependencyInfoTest extends TestCase {
     assertThat(compiler.getErrorManager().getErrorCount()).isAtLeast(1);
   }
 
+  @Test
   public void testModuleConflict() {
     Compiler compiler = new Compiler();
     CompilerOptions options = new CompilerOptions();
@@ -140,9 +147,9 @@ public final class LazyParsedDependencyInfoTest extends TestCase {
             .build();
     DependencyInfo info = new LazyParsedDependencyInfo(delegate, ast, compiler);
 
-    assertThat(Arrays.asList(compiler.getErrorManager().getWarnings())).isEmpty();
+    assertThat(compiler.getErrorManager().getWarnings()).isEmpty();
     assertThat(info.getLoadFlags()).containsExactly("module", "es6", "lang", "es6");
-    assertThat(Arrays.asList(compiler.getErrorManager().getWarnings()))
+    assertThat(compiler.getErrorManager().getWarnings())
         .containsExactly(JSError.make(ModuleLoader.MODULE_CONFLICT, "my/js.js"));
   }
 }

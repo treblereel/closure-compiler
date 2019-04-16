@@ -31,10 +31,18 @@
 
 
 /**
- * @param {string=} opt_description
+ * @constructor
+ * @param {*=} opt_description
  * @return {symbol}
  */
 function Symbol(opt_description) {}
+
+
+/**
+ * @const {string|undefined}
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/description
+ */
+Symbol.prototype.description;
 
 
 /**
@@ -42,7 +50,7 @@ function Symbol(opt_description) {}
  * @return {symbol|undefined}
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/for
  */
-Symbol.for;
+Symbol.for = function(sym) {};
 
 
 /**
@@ -50,7 +58,7 @@ Symbol.for;
  * @return {string|undefined}
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/keyFor
  */
-Symbol.keyFor;
+Symbol.keyFor = function(sym) {};
 
 
 // Well known symbols
@@ -106,7 +114,7 @@ function Iterator() {}
  * @param {?=} opt_value
  * @return {!IIterableResult<VALUE>}
  */
-Iterator.prototype.next;
+Iterator.prototype.next = function(opt_value) {};
 
 
 /**
@@ -457,32 +465,12 @@ Object.prototype.toSource = function() {};
 Object.prototype.toString = function() {};
 
 /**
- * Removes a watchpoint set with the {@see Object.prototype.watch} method.
- * Mozilla-only.
- * @param {string} prop The name of a property of the object.
- * @see http://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/unwatch
- * @return {undefined}
- */
-Object.prototype.unwatch = function(prop) {};
-
-/**
  * Returns the object's `this` value.
  * @return {*}
  * @nosideeffects
  * @see http://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/valueOf
  */
 Object.prototype.valueOf = function() {};
-
-/**
- * Sets a watchpoint method.
- * Mozilla-only.
- * @param {string} prop The name of a property of the object.
- * @param {Function} handler A function to call.
- * @see http://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/watch
- * @return {undefined}
- */
-Object.prototype.watch = function(prop, handler) {};
-
 
 /**
  * @constructor
@@ -1986,19 +1974,21 @@ String.prototype.sup = function() {};
 
 /**
  * @this {String|string}
+ * @param {(string|Array<string>)=} opt_locales
  * @return {string}
  * @nosideeffects
  * @see http://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/toLocaleUpperCase
  */
-String.prototype.toLocaleUpperCase = function() {};
+String.prototype.toLocaleUpperCase = function(opt_locales) {};
 
 /**
  * @this {String|string}
+ * @param {(string|Array<string>)=} opt_locales
  * @return {string}
  * @nosideeffects
  * @see http://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/toLocaleLowerCase
  */
-String.prototype.toLocaleLowerCase = function() {};
+String.prototype.toLocaleLowerCase = function(opt_locales) {};
 
 /**
  * @this {String|string}
@@ -2410,31 +2400,3 @@ function URIError(opt_message, opt_file, opt_line) {}
  * @type {function(new:?, string, string=)}
  */
 function ActiveXObject(progId, opt_location) {}
-
-/**
- * @return {string}
- * @nosideeffects
- * @see http://msdn.microsoft.com/en-us/library/9k34bww2(VS.80).aspx
- */
-function ScriptEngine() {}
-
-/**
- * @return {number}
- * @nosideeffects
- * @see http://msdn.microsoft.com/en-us/library/yf25ky07(VS.80).aspx
- */
-function ScriptEngineMajorVersion() {}
-
-/**
- * @return {number}
- * @nosideeffects
- * @see http://msdn.microsoft.com/en-us/library/wx3812cz(VS.80).aspx
- */
-function ScriptEngineMinorVersion() {}
-
-/**
- * @return {number}
- * @nosideeffects
- * @see http://msdn.microsoft.com/en-us/library/e98hsk2f(VS.80).aspx
- */
-function ScriptEngineBuildVersion() {}

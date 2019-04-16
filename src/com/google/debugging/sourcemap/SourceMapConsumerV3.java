@@ -70,10 +70,8 @@ public final class SourceMapConsumerV3 implements SourceMapConsumer,
     parse(sourceMapObject, null);
   }
 
-  /**
-   * Parses the given contents containing a source map.
-   */
-  void parse(SourceMapObject sourceMapObject, SourceMapSupplier sectionSupplier)
+  /** Parses the given contents containing a source map. */
+  public void parse(SourceMapObject sourceMapObject, SourceMapSupplier sectionSupplier)
       throws SourceMapParseException {
     if (sourceMapObject.getVersion() != 3) {
       throw new SourceMapParseException("Unknown version: " + sourceMapObject.getVersion());
@@ -127,6 +125,8 @@ public final class SourceMapConsumerV3 implements SourceMapConsumer,
         throw new SourceMapParseException("Invalid map format");
       }
 
+      // Build up a new source map in a new generator using the mappings of this metamap. The new
+      // map will be rendered to JSON and then parsed using this consumer.
       SourceMapGeneratorV3 generator = new SourceMapGeneratorV3();
       for (SourceMapSection section : sourceMapObject.getSections()) {
         String mapSectionContents = section.getSectionValue();
@@ -140,14 +140,9 @@ public final class SourceMapConsumerV3 implements SourceMapConsumer,
       }
 
       StringBuilder sb = new StringBuilder();
-      try {
-        generator.appendTo(sb, sourceMapObject.getFile());
-      } catch (IOException e) {
-        // Can't happen.
-        throw new RuntimeException(e);
-      }
-
+      generator.appendTo(sb, sourceMapObject.getFile());
       parse(sb.toString());
+
     } catch (IOException ex) {
       throw new SourceMapParseException("IO exception: " + ex);
     }

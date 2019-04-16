@@ -28,16 +28,22 @@ import static com.google.javascript.jscomp.PolymerPassErrors.POLYMER_UNANNOTATED
 import static com.google.javascript.jscomp.PolymerPassErrors.POLYMER_UNEXPECTED_PARAMS;
 import static com.google.javascript.jscomp.PolymerPassErrors.POLYMER_UNQUALIFIED_BEHAVIOR;
 import static com.google.javascript.jscomp.TypeValidator.TYPE_MISMATCH_WARNING;
-import static com.google.javascript.jscomp.testing.NodeSubject.assertNode;
+import static com.google.javascript.rhino.testing.NodeSubject.assertNode;
 
 import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
 import com.google.javascript.jscomp.NodeUtil.Visitor;
 import com.google.javascript.rhino.Node;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 /**
  * Unit tests for PolymerPass
+ *
  * @author jlklein@google.com (Jeremy Klein)
  */
+@RunWith(JUnit4.class)
 public class PolymerPassTest extends CompilerTestCase {
   private static final String EXTERNS_PREFIX =
       lines(
@@ -113,9 +119,18 @@ public class PolymerPassTest extends CompilerTestCase {
           " * @return {T}",
           " * @template T",
           " */",
-          "$jscomp.reflectObject = function (type, object) { return object; };");
+          "$jscomp.reflectObject = function (type, object) { return object; };",
+          "/**",
+          " * @param {string} propName",
+          " * @param {?Object} type class, interface, or record",
+          " * @return {string}",
+          " */",
+          "$jscomp.reflectProperty = function(propName, type) {",
+          "  return propName;",
+          "};");
 
   private int polymerVersion = 1;
+  private PolymerExportPolicy polymerExportPolicy = PolymerExportPolicy.LEGACY;
   private boolean propertyRenamingEnabled = false;
 
   public PolymerPassTest() {
@@ -124,11 +139,12 @@ public class PolymerPassTest extends CompilerTestCase {
 
   @Override
   protected CompilerPass getProcessor(Compiler compiler) {
-    return new PolymerPass(compiler, polymerVersion, propertyRenamingEnabled);
+    return new PolymerPass(compiler, polymerVersion, polymerExportPolicy, propertyRenamingEnabled);
   }
 
   @Override
-  protected void setUp() throws Exception {
+  @Before
+  public void setUp() throws Exception {
     super.setUp();
     enableTypeCheck();
     setAcceptedLanguage(LanguageMode.ECMASCRIPT_2017);
@@ -142,6 +158,7 @@ public class PolymerPassTest extends CompilerTestCase {
     return 1;
   }
 
+  @Test
   public void testVarTarget() {
     test(
         lines(
@@ -174,6 +191,20 @@ public class PolymerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
+  public void testVarTargetMissingExterns() {
+    allowSourcelessWarnings(); // the missing Polymer externs warning has no source, since it's not
+    // about any particular file
+    testError(
+        /* externs= */ "",
+        lines(
+            "var X = Polymer({", //
+            "  is: 'x-element',",
+            "});"),
+        PolymerPassErrors.POLYMER_MISSING_EXTERNS);
+  }
+
+  @Test
   public void testLetTarget() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -210,6 +241,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testConstTarget() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -235,6 +267,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testDefaultTypeNameTarget() {
     test(
         lines(
@@ -253,6 +286,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testPathAssignmentTarget() {
     test(
         lines(
@@ -289,6 +323,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "};"));
   }
 
+  @Test
   public void testComputedPropName() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     // TypeCheck cannot grab a name from a complicated computedPropName
@@ -307,10 +342,10 @@ public class PolymerPassTest extends CompilerTestCase {
   }
 
   /**
-   * Since 'x' is a global name, the type system understands
-   * 'x.Z' as a type name, so there is no need to extract the
-   * type to the global namespace.
+   * Since 'x' is a global name, the type system understands 'x.Z' as a type name, so there is no
+   * need to extract the type to the global namespace.
    */
+  @Test
   public void testIIFEExtractionInGlobalNamespace() {
     test(
         lines(
@@ -359,10 +394,10 @@ public class PolymerPassTest extends CompilerTestCase {
   }
 
   /**
-   * The definition of XElement is placed in the global namespace,
-   * outside the IIFE so that the type system will understand that
-   * XElement is a type.
+   * The definition of XElement is placed in the global namespace, outside the IIFE so that the type
+   * system will understand that XElement is a type.
    */
+  @Test
   public void testIIFEExtractionNoAssignmentTarget() {
     test(
         lines(
@@ -409,10 +444,10 @@ public class PolymerPassTest extends CompilerTestCase {
   }
 
   /**
-   * The definition of FooThing is placed in the global namespace,
-   * outside the IIFE so that the type system will understand that
-   * FooThing is a type.
+   * The definition of FooThing is placed in the global namespace, outside the IIFE so that the type
+   * system will understand that FooThing is a type.
    */
+  @Test
   public void testIIFEExtractionVarTarget() {
     test(
         1,
@@ -438,6 +473,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "})()"));
   }
 
+  @Test
   public void testConstructorExtraction() {
     test(
         lines(
@@ -462,6 +498,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testShorthandConstructorExtraction() {
     test(
         lines(
@@ -487,6 +524,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testOtherKeysIgnored() {
     test(
         lines(
@@ -537,6 +575,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "}"));
   }
 
+  @Test
   public void testListenersAndHostAttributeKeysQuoted() {
     test(
         lines(
@@ -579,6 +618,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testNativeElementExtension() {
     String js = lines(
         "Polymer({",
@@ -602,6 +642,7 @@ public class PolymerPassTest extends CompilerTestCase {
     testExternChanges(EXTERNS, js, INPUT_EXTERNS);
   }
 
+  @Test
   public void testExtendNonExistentElement() {
     polymerVersion = 1;
     String js = lines(
@@ -613,6 +654,7 @@ public class PolymerPassTest extends CompilerTestCase {
     testError(js, POLYMER_INVALID_EXTENDS);
   }
 
+  @Test
   public void testNativeElementExtensionExternsNotDuplicated() {
     String js =
         lines(
@@ -633,6 +675,7 @@ public class PolymerPassTest extends CompilerTestCase {
     testExternChanges(EXTERNS, js, newExterns);
   }
 
+  @Test
   public void testPropertiesAddedToPrototype() {
     test(
         lines(
@@ -733,6 +776,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "a.B.prototype.thingToDo;"));
   }
 
+  @Test
   public void testPropertiesDefaultValueFunctions() {
     test(
         lines(
@@ -845,6 +889,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "a.B.prototype.name;"));
   }
 
+  @Test
   public void testPropertiesDefaultValueShortHandFunction() {
     test(
         lines(
@@ -941,6 +986,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "a.B.prototype.name;"));
   }
 
+  @Test
   public void testReadOnlyPropertySetters() {
     String js =
         lines(
@@ -1085,6 +1131,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "A.prototype._setPets = function(pets) {};"));
   }
 
+  @Test
   public void testReflectToAttributeProperties() {
     String js =
         lines(
@@ -1179,6 +1226,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "Polymera_BInterface.prototype.name;"));
   }
 
+  @Test
   public void testPolymerClassObserversTyped() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -1201,6 +1249,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "}"));
   }
 
+  @Test
   public void testShorthandFunctionDefinition() {
     test(
         lines(
@@ -1226,6 +1275,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testArrowFunctionDefinition() {
     test(
         lines(
@@ -1247,6 +1297,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testShorthandLifecycleCallbacks() {
     test(
         lines(
@@ -1273,6 +1324,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testShorthandFunctionDefinitionWithReturn() {
     test(
         lines(
@@ -1298,6 +1350,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testThisTypeAddedToFunctions() {
     test(
         lines(
@@ -1386,6 +1439,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "}"));
   }
 
+  @Test
   public void testDollarSignPropsConvertedToBrackets() {
     test(
         lines(
@@ -1521,6 +1575,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "Foo.prototype.propName;"));
   }
 
+  @Test
   public void testDollarSignPropsInShorthandFunctionConvertedToBrackets() {
     test(
         lines(
@@ -1557,6 +1612,7 @@ public class PolymerPassTest extends CompilerTestCase {
   /**
    * Test that behavior property types are copied correctly to multiple elements. See b/21929103.
    */
+  @Test
   public void testBehaviorForMultipleElements() {
     test(
         lines(
@@ -1635,6 +1691,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testSimpleBehavior() {
     test(
         srcs(lines(
@@ -1738,6 +1795,48 @@ public class PolymerPassTest extends CompilerTestCase {
             });
   }
 
+  /** Check that we can resolve behaviors through a chain of identifiers. */
+  @Test
+  public void testIndirectBehaviorAssignment() {
+    test(
+        srcs(
+            lines(
+                "/** @polymerBehavior */",
+                "var MyBehavior = {",
+                "  properties: {",
+                "    behaviorProperty: Boolean",
+                "  }",
+                "};",
+                "var BehaviorAlias1 = MyBehavior;",
+                "var BehaviorAlias2 = BehaviorAlias1;",
+                "var MyElement = Polymer({",
+                "  is: 'my-element',",
+                "  behaviors: [ BehaviorAlias2 ]",
+                "});")),
+        expected(
+            lines(
+                "/** @polymerBehavior @nocollapse */",
+                "var MyBehavior = {",
+                "  properties: {",
+                "    behaviorProperty: Boolean",
+                "  }",
+                "};",
+                "var BehaviorAlias1 = MyBehavior;",
+                "var BehaviorAlias2 = BehaviorAlias1;",
+                "/**",
+                " * @constructor",
+                " * @extends {PolymerElement}",
+                " * @implements {PolymerMyElementInterface}",
+                " */",
+                "var MyElement = function(){};",
+                "/** @type {boolean} */",
+                "MyElement.prototype.behaviorProperty;",
+                "MyElement = Polymer(/** @lends {MyElement.prototype} */ {",
+                "  is: 'my-element',",
+                "  behaviors: [ BehaviorAlias2 ]",
+                "});")));
+  }
+
   private static class DoSomethingFunFinder implements Visitor {
     boolean found = false;
 
@@ -1751,6 +1850,7 @@ public class PolymerPassTest extends CompilerTestCase {
   }
 
   /** If a behavior method is {@code @protected} there is no visibility warning. */
+  @Test
   public void testBehaviorWithProtectedMethod() {
     enableCheckAccessControls();
     for (int i = 1; i <= 2; i++) {
@@ -1806,6 +1906,7 @@ public class PolymerPassTest extends CompilerTestCase {
   }
 
   /** If a behavior method is {@code @private} there is a visibility warning. */
+  @Test
   public void testBehaviorWithPrivateMethod() {
     enableCheckAccessControls();
     testWarning(
@@ -1832,6 +1933,7 @@ public class PolymerPassTest extends CompilerTestCase {
    * Test that if a behavior function is implemented by the Element, the function from the behavior
    * is not copied to the prototype of the Element.
    */
+  @Test
   public void testBehaviorFunctionOverriddenByElement() {
     test(
         lines(
@@ -1888,6 +1990,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testBehaviorShorthandFunctionOverriddenByElement() {
     test(
         lines(
@@ -1938,6 +2041,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testBehaviorDefaultValueSuppression() {
     test(
         lines(
@@ -2006,6 +2110,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testArrayBehavior() {
     test(
         lines(
@@ -2127,6 +2232,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testInlineLiteralBehavior() {
     test(
         lines(
@@ -2223,6 +2329,7 @@ public class PolymerPassTest extends CompilerTestCase {
    * If an element has two or more behaviors which define the same function, only the last
    * behavior's function should be copied over to the element's prototype.
    */
+  @Test
   public void testBehaviorFunctionOverriding() {
     test(
         lines(
@@ -2330,6 +2437,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testBehaviorShorthandFunctionOverriding() {
     test(
         lines(
@@ -2438,6 +2546,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testBehaviorReadOnlyProp() {
     String js =
         lines(
@@ -2543,9 +2652,11 @@ public class PolymerPassTest extends CompilerTestCase {
   }
 
   /**
-   * Behaviors whose declarations are not in the global scope may contain references to
-   * symbols which do not exist in the element's scope. Only copy a function stub.
+   * Behaviors whose declarations are not in the global scope may contain references to symbols
+   * which do not exist in the element's scope. Only copy a function stub.
+   *
    */
+  @Test
   public void testBehaviorInIIFE() {
     test(
         lines(
@@ -2638,6 +2749,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testDuplicatedBehaviorsAreCopiedOnce() {
     test(
         lines(
@@ -2736,6 +2848,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testInvalid1() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -2761,6 +2874,7 @@ public class PolymerPassTest extends CompilerTestCase {
         POLYMER_CLASS_PROPERTIES_NOT_STATIC);
   }
 
+  @Test
   public void testInvalidProperties() {
     testError(
         lines(
@@ -2843,6 +2957,7 @@ public class PolymerPassTest extends CompilerTestCase {
         POLYMER_INVALID_PROPERTY);
   }
 
+  @Test
   public void testInvalidBehavior() {
     testError(
         lines(
@@ -2895,6 +3010,7 @@ public class PolymerPassTest extends CompilerTestCase {
         POLYMER_UNQUALIFIED_BEHAVIOR);
   }
 
+  @Test
   public void testUnannotatedBehavior() {
     testError(
         lines(
@@ -2909,6 +3025,7 @@ public class PolymerPassTest extends CompilerTestCase {
         POLYMER_UNANNOTATED_BEHAVIOR);
   }
 
+  @Test
   public void testInvalidTypeAssignment() {
     test(
         lines(
@@ -2940,6 +3057,7 @@ public class PolymerPassTest extends CompilerTestCase {
         warning(TYPE_MISMATCH_WARNING));
   }
 
+  @Test
   public void testFeaturesInFunctionBody() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -2979,6 +3097,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "});"));
   }
 
+  @Test
   public void testPolymerElementAnnotation1() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -3032,6 +3151,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "Foo.prototype.thingToDo;"));
   }
 
+  @Test
   public void testPolymerElementAnnotation2() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -3087,6 +3207,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "a.B.prototype.thingToDo;"));
   }
 
+  @Test
   public void testPolymerElementAnnotation3() {
     // Type checker doesn't currently understand ES6 code. Remove when it does.
     disableTypeCheck();
@@ -3142,6 +3263,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "a.B.prototype.other;"));
   }
 
+  @Test
   public void testObjectReflectionAddedToConfigProperties1() {
     propertyRenamingEnabled = true;
     test(
@@ -3245,6 +3367,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "a.B.prototype.thingToDo;"));
   }
 
+  @Test
   public void testObjectReflectionAddedToConfigProperties2() {
     propertyRenamingEnabled = true;
     test(
@@ -3344,6 +3467,7 @@ public class PolymerPassTest extends CompilerTestCase {
             "A.prototype.thingToDo;"));
   }
 
+  @Test
   public void testObjectReflectionAddedToConfigProperties3() {
     propertyRenamingEnabled = true;
     test(
@@ -3446,6 +3570,613 @@ public class PolymerPassTest extends CompilerTestCase {
             "XElement.prototype.thingToDo;"));
   }
 
+  @Test
+  public void testExportsMethodsFromClassBasedElement() {
+    polymerExportPolicy = PolymerExportPolicy.EXPORT_ALL;
+    test(
+        2,
+        lines(
+            "class TestElement extends PolymerElement {",
+            "  /** @public */ method1() {}",
+            "  /** @private */ method2() {}",
+            "}"),
+        lines(
+            "/** @implements {PolymerTestElementInterface} */",
+            "class TestElement extends PolymerElement {",
+            "  /** @public */ method1() {}",
+            "  /** @private */ method2() {}",
+            "}",
+            "/** @private @export */ TestElement.prototype.method2;",
+            "/** @public @export */ TestElement.prototype.method1;"));
+  }
+
+  @Test
+  public void testExportMethodsFromLegacyElement() {
+    polymerExportPolicy = PolymerExportPolicy.EXPORT_ALL;
+    test(
+        2,
+        lines(
+            "Polymer({",
+            "  is: 'test-element',",
+            "  /** @public */ method1() {},",
+            "  /** @private */ method2() {},",
+            "});"),
+        lines(
+            "/**",
+            " * @constructor",
+            " * @extends {PolymerElement}",
+            " * @implements {PolymerTestElementElementInterface}",
+            " */",
+            "var TestElementElement = function() {};",
+            "Polymer(/** @lends {TestElementElement.prototype} */ {",
+            "  is: \"test-element\",",
+            "  /** @public @this {TestElementElement} */ method1() {},",
+            "  /** @private @this {TestElementElement} */ method2() {},",
+            "});",
+            "/** @private @export */ TestElementElement.prototype.method2;",
+            "/** @public @export */ TestElementElement.prototype.method1;"));
+  }
+
+  @Test
+  public void testExportsUniqueMethodsFromLegacyElementAndBehaviors() {
+    polymerExportPolicy = PolymerExportPolicy.EXPORT_ALL;
+    test(
+        2,
+        lines(
+            "/** @polymerBehavior */",
+            "const Behavior1 = {",
+            "  /** @public */ onAll: function() {},",
+            "  /**",
+            "   * @public",
+            // Note we include this @return annotation to test that we aren't including @return,
+            // @param and other redundant JSDoc in our generated @export statements, since that
+            // would cause a re-declaration error.
+            "   * @return {void}",
+            "   */",
+            "   onBehavior1: function() {},",
+            "};",
+            "/** @polymerBehavior */",
+            "const Behavior2 = {",
+            "  /** @private */ onAll: function() {},",
+            "  /** @private */ onBehavior2: function() {},",
+            "};",
+            "Polymer({",
+            "  is: 'test-element',",
+            "  behaviors: [Behavior1, Behavior2],",
+            "  /** @private */ onAll: function() {},",
+            "  /** @private */ onElement: function() {},",
+            "});"),
+        lines(
+            "/** @nocollapse @polymerBehavior */",
+            "const Behavior1 = {",
+            "  /** @suppress {checkTypes,globalThis,visibility} */",
+            "  onAll: function() {},",
+            "  /** @suppress {checkTypes,globalThis,visibility} */",
+            "  onBehavior1: function() {}",
+            "};",
+            "/** @nocollapse @polymerBehavior */",
+            "const Behavior2 = {",
+            "  /** @suppress {checkTypes,globalThis,visibility} */",
+            "  onAll: function() {},",
+            "  /** @suppress {checkTypes,globalThis,visibility} */",
+            "  onBehavior2: function() {}",
+            "};",
+            "/**",
+            " * @constructor",
+            " * @extends {PolymerElement}",
+            " * @implements {PolymerTestElementElementInterface}",
+            " */",
+            "var TestElementElement = function() {};",
+            "/**",
+            " * @public",
+            " * @suppress {unusedPrivateMembers}",
+            " * @return {void}",
+            " */",
+            "TestElementElement.prototype.onBehavior1 = function() {};",
+            "/** @private @suppress {unusedPrivateMembers} */",
+            "TestElementElement.prototype.onBehavior2 = function() {};",
+            "Polymer(/** @lends {TestElementElement.prototype} */ {",
+            "  is: \"test-element\",",
+            "  behaviors: [Behavior1, Behavior2],",
+            "  /** @private @this {TestElementElement} */",
+            "  onAll: function() {},",
+            "  /** @private @this {TestElementElement} */",
+            "  onElement: function() {}",
+            "});",
+            "/** @private @export */ TestElementElement.prototype.onElement;",
+            "/** @private @export */ TestElementElement.prototype.onBehavior2;",
+            "/** @public @export */ TestElementElement.prototype.onBehavior1;",
+            "/** @private @export */ TestElementElement.prototype.onAll;"));
+  }
+
+  @Test
+  public void testSimpleObserverStringsConvertedToReferences1() {
+    propertyRenamingEnabled = true;
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    test(
+        2,
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "class XElement extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        observer: '_petsChanged'",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        observer: '_nameChanged'",
+            "      },",
+            "      thingToDo: Function,",
+            "    };",
+            "  }",
+            "  _petsChanged(newValue, oldValue) {}",
+            "  _nameChanged(newValue, oldValue) {}",
+            "}"),
+        lines(
+            REFLECT_OBJECT_DEF,
+            "/** @constructor */",
+            "var User = function() {};",
+            "class XElement extends Polymer.Element {",
+            "  /** @return {string} */",
+            "  static get is() { return 'x-element'; }",
+            "  /** @return {" + POLYMER_ELEMENT_PROP_CONFIG + "} */",
+            "  static get properties() {",
+            "    return $jscomp.reflectObject(XElement, {",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        observer: XElement.prototype._petsChanged",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        observer: XElement.prototype._nameChanged",
+            "      },",
+            "      thingToDo: Function,",
+            "    });",
+            "  }",
+            "  _petsChanged(newValue, oldValue) {}",
+            "  _nameChanged(newValue, oldValue) {}",
+            "}",
+            "/** @type {!User} @private */",
+            "XElement.prototype.user_;",
+            "/** @type {!Array} */",
+            "XElement.prototype.pets;",
+            "/** @type {string} */",
+            "XElement.prototype.name;",
+            "/** @type {!Function} */",
+            "XElement.prototype.thingToDo;"));
+  }
+
+  @Test
+  public void testSimpleObserverStringsConvertedToReferences2() {
+    propertyRenamingEnabled = true;
+
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    test(
+        2,
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "var a = {};",
+            "a.B = class extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        observer: '_petsChanged'",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        observer: '_nameChanged'",
+            "      },",
+            "      thingToDo: Function",
+            "    };",
+            "  }",
+            "  _petsChanged(newValue, oldValue) {}",
+            "  _nameChanged(newValue, oldValue) {}",
+            "};"),
+        lines(
+            REFLECT_OBJECT_DEF,
+            "/** @constructor */",
+            "var User = function() {};",
+            "var a = {};",
+            "a.B = class extends Polymer.Element {",
+            "  /** @return {string} */",
+            "  static get is() { return 'x-element'; }",
+            "  /** @return {" + POLYMER_ELEMENT_PROP_CONFIG + "} */",
+            "  static get properties() {",
+            "    return  $jscomp.reflectObject(a.B, {",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        observer: a.B.prototype._petsChanged",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        observer: a.B.prototype._nameChanged",
+            "      },",
+            "      thingToDo: Function",
+            "    });",
+            "  }",
+            "  _petsChanged(newValue, oldValue) {}",
+            "  _nameChanged(newValue, oldValue) {}",
+            "};",
+            "/** @type {!User} @private */",
+            "a.B.prototype.user_;",
+            "/** @type {!Array} */",
+            "a.B.prototype.pets;",
+            "/** @type {string} */",
+            "a.B.prototype.name;",
+            "/** @type {!Function} */",
+            "a.B.prototype.thingToDo;"));
+  }
+
+  @Test
+  public void testSimpleObserverStringsConvertedToReferences3() {
+    propertyRenamingEnabled = true;
+
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    test(
+        2,
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "const A = class extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        observer: '_petsChanged'",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        observer: '_nameChanged'",
+            "      },",
+            "      thingToDo: Function,",
+            "    };",
+            "  }",
+            "  _petsChanged(newValue, oldValue) {}",
+            "  _nameChanged(newValue, oldValue) {}",
+            "};"),
+        lines(
+            REFLECT_OBJECT_DEF,
+            "/** @constructor */",
+            "var User = function() {};",
+            "const A = class extends Polymer.Element {",
+            "  /** @return {string} */",
+            "  static get is() { return 'x-element'; }",
+            "  /** @return {" + POLYMER_ELEMENT_PROP_CONFIG + "} */",
+            "  static get properties() {",
+            "    return $jscomp.reflectObject(A, {",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        observer: A.prototype._petsChanged",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        observer: A.prototype._nameChanged",
+            "      },",
+            "      thingToDo: Function,",
+            "    });",
+            "  }",
+            "  _petsChanged(newValue, oldValue) {}",
+            "  _nameChanged(newValue, oldValue) {}",
+            "};",
+            "/** @type {!User} @private */",
+            "A.prototype.user_;",
+            "/** @type {!Array} */",
+            "A.prototype.pets;",
+            "/** @type {string} */",
+            "A.prototype.name;",
+            "/** @type {!Function} */",
+            "A.prototype.thingToDo;"));
+  }
+
+  @Test
+  public void testReflectionForComputedPropertyStrings1() {
+    propertyRenamingEnabled = true;
+
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    test(
+        2,
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "class XElement extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        computed: '_computePets()'",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        computed: '_computeName(user_, thingToDo)'",
+            "      },",
+            "      thingToDo: Function,",
+            "    };",
+            "  }",
+            "  _computePets() {}",
+            "  _computeName(user, thingToDo) {}",
+            "}"),
+        lines(
+            REFLECT_OBJECT_DEF,
+            "/** @constructor */",
+            "var User = function() {};",
+            "class XElement extends Polymer.Element {",
+            "  /** @return {string} */",
+            "  static get is() { return 'x-element'; }",
+            "  /** @return {" + POLYMER_ELEMENT_PROP_CONFIG + "} */",
+            "  static get properties() {",
+            "    return $jscomp.reflectObject(XElement, {",
+            "      user_: Object,",
+            "      pets: {",
+            "        type: Array,",
+            "        computed: $jscomp.reflectProperty(",
+            "            '_computePets', /** @type {!XElement} */ ({})) + '()'",
+            "      },",
+            "      name: {",
+            "        type: String,",
+            "        computed: $jscomp.reflectProperty(",
+            "            '_computeName', /** @type {!XElement} */ ({})) + '(' +",
+            "            $jscomp.reflectProperty('user_', /** @type {!XElement} */ ({})) + ',' + ",
+            "            $jscomp.reflectProperty('thingToDo', /** @type {!XElement} */ ({})) + ",
+            "            ')'",
+            "      },",
+            "      thingToDo: Function,",
+            "    });",
+            "  }",
+            "  _computePets() {}",
+            "  _computeName(user, thingToDo) {}",
+            "}",
+            "/** @type {!User} @private */",
+            "XElement.prototype.user_;",
+            "/** @type {!Array} */",
+            "XElement.prototype.pets;",
+            "/** @type {string} */",
+            "XElement.prototype.name;",
+            "/** @type {!Function} */",
+            "XElement.prototype.thingToDo;",
+            "JSCOMPILER_PRESERVE(XElement.prototype._computePets);",
+            "JSCOMPILER_PRESERVE(XElement.prototype._computeName);",
+            "JSCOMPILER_PRESERVE(XElement.prototype.user_);",
+            "JSCOMPILER_PRESERVE(XElement.prototype.thingToDo);"));
+  }
+
+  @Test
+  public void testReflectionForComputedPropertyStrings2() {
+    propertyRenamingEnabled = true;
+
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    test(
+        2,
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "/** @type {string} */ User.prototype.id;",
+            "class XElement extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: Array,",
+            "      name: {",
+            "        type: String,",
+            "        computed: '_computeName(\"user\", 12.0, user_.id, user_.*)'",
+            "      },",
+            "      thingToDo: Function,",
+            "    };",
+            "  }",
+            "  _computePets() {}",
+            "  _computeName(user, thingToDo) {}",
+            "}"),
+        lines(
+            REFLECT_OBJECT_DEF,
+            "/** @constructor */",
+            "var User = function() {};",
+            "/** @type {string} */ User.prototype.id;",
+            "class XElement extends Polymer.Element {",
+            "  /** @return {string} */",
+            "  static get is() { return 'x-element'; }",
+            "  /** @return {" + POLYMER_ELEMENT_PROP_CONFIG + "} */",
+            "  static get properties() {",
+            "    return $jscomp.reflectObject(XElement, {",
+            "      user_: Object,",
+            "      pets: Array,",
+            "      name: {",
+            "        type: String,",
+            "        computed: $jscomp.reflectProperty(",
+            "            '_computeName', /** @type {!XElement} */ ({})) + '(' +",
+            "            '\"user\"' + ',' + '12.0' + ',' + ",
+            "            $jscomp.reflectProperty('user_', /** @type {!XElement} */ ({})) + '.' + ",
+            "            $jscomp.reflectProperty(",
+            "                'id', /** @type {!XElement} */ ({}).user_)",
+            "                + ',' + ",
+            "            $jscomp.reflectProperty('user_', /** @type {!XElement} */ ({})) + ",
+            "            '.*' + ')'",
+            "      },",
+            "      thingToDo: Function,",
+            "    });",
+            "  }",
+            "  _computePets() {}",
+            "  _computeName(user, thingToDo) {}",
+            "}",
+            "/** @type {!User} @private */",
+            "XElement.prototype.user_;",
+            "/** @type {!Array} */",
+            "XElement.prototype.pets;",
+            "/** @type {string} */",
+            "XElement.prototype.name;",
+            "/** @type {!Function} */",
+            "XElement.prototype.thingToDo;",
+            "JSCOMPILER_PRESERVE(XElement.prototype._computeName);",
+            "JSCOMPILER_PRESERVE(XElement.prototype.user_);",
+            "JSCOMPILER_PRESERVE(XElement.prototype.user_);"));
+  }
+
+  @Test
+  public void testParseErrorForComputedPropertyStrings1() {
+    propertyRenamingEnabled = true;
+
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    polymerVersion = 2;
+    super.testError(
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "/** @type {string} */ User.prototype.id;",
+            "class XElement extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: Array,",
+            "      name: {",
+            "        type: String,",
+            "        computed: '_computeName(\"user\", 12.0, user_.id'",
+            "      },",
+            "      thingToDo: Function,",
+            "    };",
+            "  }",
+            "  _computePets() {}",
+            "  _computeName(user, thingToDo) {}",
+            "}"),
+        PolymerPassErrors.POLYMER_UNPARSABLE_STRING);
+  }
+
+  @Test
+  public void testParseErrorForComputedPropertyStrings2() {
+    propertyRenamingEnabled = true;
+
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    polymerVersion = 2;
+    super.testError(
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "/** @type {string} */ User.prototype.id;",
+            "class XElement extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: Array,",
+            "      name: {",
+            "        type: String,",
+            "        computed: '_computeName(\"user)'",
+            "      },",
+            "      thingToDo: Function,",
+            "    };",
+            "  }",
+            "  _computePets() {}",
+            "  _computeName(user, thingToDo) {}",
+            "}"),
+        PolymerPassErrors.POLYMER_UNPARSABLE_STRING);
+  }
+
+  @Test
+  public void testReflectionForComplexObservers() {
+    propertyRenamingEnabled = true;
+
+    // Type checker doesn't currently understand ES6 code. Remove when it does.
+    disableTypeCheck();
+    test(
+        2,
+        lines(
+            "/** @constructor */",
+            "var User = function() {};",
+            "class XElement extends Polymer.Element {",
+            "  static get is() { return 'x-element'; }",
+            "  static get properties() {",
+            "    return {",
+            "      /** @type {!User} @private */",
+            "      user_: Object,",
+            "      pets: Array,",
+            "      name: String,",
+            "      thingToDo: Function,",
+            "    };",
+            "  }",
+            "  static get observers() {",
+            "    return [",
+            "      '_userChanged(user_)',",
+            "      '_userOrThingToDoChanged(user_, thingToDo)'",
+            "    ];",
+            "  }",
+            "  _userChanged(user_) {}",
+            "  _userOrThingToDoChanged(user, thingToDo) {}",
+            "}"),
+        lines(
+            REFLECT_OBJECT_DEF,
+            "/** @constructor */",
+            "var User = function() {};",
+            "class XElement extends Polymer.Element {",
+            "  /** @return {string} */",
+            "  static get is() { return 'x-element'; }",
+            "  /** @return {" + POLYMER_ELEMENT_PROP_CONFIG + "} */",
+            "  static get properties() {",
+            "    return $jscomp.reflectObject(XElement, {",
+            "      user_: Object,",
+            "      pets: Array,",
+            "      name: String,",
+            "      thingToDo: Function,",
+            "    });",
+            "  }",
+            "  /** @return {!Array<string>} */",
+            "  static get observers() {",
+            "    return [",
+            "      $jscomp.reflectProperty('_userChanged', /** @type {!XElement} */ ({})) + '(' +",
+            "          $jscomp.reflectProperty('user_', /** @type {!XElement} */ ({})) + ')',",
+            "      $jscomp.reflectProperty(",
+            "          '_userOrThingToDoChanged', /** @type {!XElement} */ ({})) + '(' +",
+            "          $jscomp.reflectProperty('user_', /** @type {!XElement} */ ({})) + ',' + ",
+            "          $jscomp.reflectProperty('thingToDo', /** @type {!XElement} */ ({})) + ",
+            "          ')'",
+            "    ];",
+            "  }",
+            "  _userChanged(user_) {}",
+            "  _userOrThingToDoChanged(user, thingToDo) {}",
+            "}",
+            "/** @type {!User} @private */",
+            "XElement.prototype.user_;",
+            "/** @type {!Array} */",
+            "XElement.prototype.pets;",
+            "/** @type {string} */",
+            "XElement.prototype.name;",
+            "/** @type {!Function} */",
+            "XElement.prototype.thingToDo;",
+            "JSCOMPILER_PRESERVE(XElement.prototype._userChanged);",
+            "JSCOMPILER_PRESERVE(XElement.prototype.user_);",
+            "JSCOMPILER_PRESERVE(XElement.prototype._userOrThingToDoChanged);",
+            "JSCOMPILER_PRESERVE(XElement.prototype.user_);",
+            "JSCOMPILER_PRESERVE(XElement.prototype.thingToDo);"));
+  }
+
   @Override
   public void test(String js, String expected) {
     polymerVersion = 1;
@@ -3482,6 +4213,15 @@ public class PolymerPassTest extends CompilerTestCase {
 
     polymerVersion = 2;
     super.testError(js, error);
+  }
+
+  @Override
+  public void testError(String externs, String js, DiagnosticType error) {
+    polymerVersion = 1;
+    super.testError(externs, js, error);
+
+    polymerVersion = 2;
+    super.testError(externs, js, error);
   }
 
   @Override

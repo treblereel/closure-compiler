@@ -33,7 +33,6 @@ import com.google.javascript.rhino.jstype.JSTypeRegistry;
 import com.google.javascript.rhino.jstype.ObjectType;
 import com.google.javascript.rhino.jstype.StaticTypedScope;
 import com.google.javascript.rhino.jstype.StaticTypedSlot;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -173,7 +172,7 @@ class TypeTransformation {
   }
 
   private JSType createUnionType(JSType[] variants) {
-    return registry.createUnionType(Arrays.asList(variants));
+    return registry.createUnionType(variants);
   }
 
   private JSType createTemplatizedType(ObjectType baseType, JSType[] params) {
@@ -437,7 +436,7 @@ class TypeTransformation {
       case ISRECORD:
         return type.isRecordType();
       case ISUNKNOWN:
-        return type.isSomeUnknownType();
+        return type.isUnknownType();
       default:
         throw new IllegalStateException(
             "Invalid type predicate in the type transformation");

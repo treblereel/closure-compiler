@@ -47,6 +47,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Sets;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -58,6 +59,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 /**
  * JSDoc information describing JavaScript code. JSDoc is represented as a unified object with
@@ -124,7 +126,8 @@ public class JSDocInfo implements Serializable {
     private String license;
     private ImmutableSet<String> suppressions;
     private ImmutableSet<String> modifies;
-    private String lendsName;
+    private JSTypeExpression lendsName;
+    @Nullable private String closurePrimitiveId;
 
     // Bit flags for properties.
     private int propertyBitField;
@@ -148,11 +151,12 @@ public class JSDocInfo implements Serializable {
           .add("suppressions", suppressions)
           .add("modifies", modifies)
           .add("lendsName", lendsName)
+          .add("closurePrimitiveId", closurePrimitiveId)
           .omitNullValues()
           .toString();
     }
 
-    @SuppressWarnings("MissingOverride")  // Adding @Override breaks the GWT compilation.
+    @SuppressWarnings("MissingOverride") // Adding @Override breaks the GWT compilation.
     protected LazilyInitializedInfo clone() {
       return clone(false);
     }
@@ -177,9 +181,24 @@ public class JSDocInfo implements Serializable {
       other.license = license;
       other.suppressions = suppressions == null ? null : ImmutableSet.copyOf(suppressions);
       other.modifies = modifies == null ? null :  ImmutableSet.copyOf(modifies);
-      other.lendsName = lendsName;
+      other.lendsName = cloneType(lendsName, cloneTypeNodes);
+      other.closurePrimitiveId = closurePrimitiveId;
 
       other.propertyBitField = propertyBitField;
+      return other;
+    }
+
+    protected LazilyInitializedInfo cloneClassDoc() {
+      LazilyInitializedInfo other = clone(/* cloneTypeNodes= */ false);
+      other.parameters = null;
+      other.suppressions = null;
+      return other;
+    }
+
+    protected LazilyInitializedInfo cloneConstructorDoc() {
+      LazilyInitializedInfo other = new LazilyInitializedInfo();
+      other.parameters = cloneTypeMap(parameters, /* cloneTypeExpressionNodes= */ false);
+      other.suppressions = suppressions == null ? null : ImmutableSet.copyOf(suppressions);
       return other;
     }
 
@@ -243,6 +262,31 @@ public class JSDocInfo implements Serializable {
 
     private List<String> authors;
     private List<String> sees;
+
+    LazilyInitializedDocumentation cloneConstructorDoc() {
+      LazilyInitializedDocumentation other = new LazilyInitializedDocumentation();
+      if (parameters != null) {
+        other.parameters = new LinkedHashMap<>(parameters);
+      }
+      return other;
+    }
+
+    @Override
+    public String toString() {
+      return MoreObjects.toStringHelper(this)
+          .add("sourceComment", sourceComment)
+          .add("markers", markers)
+          .add("parameters", parameters)
+          .add("throwsDescriptions", throwsDescriptions)
+          .add("blockDescription", blockDescription)
+          .add("fileOverview", fileOverview)
+          .add("returnDescription", returnDescription)
+          .add("version", version)
+          .add("authors", authors)
+          .add("sees", sees)
+          .omitNullValues()
+          .toString();
+    }
   }
 
   /**
@@ -556,6 +600,40 @@ public class JSDocInfo implements Serializable {
     return other;
   }
 
+  /**
+   * This is used to get all nodes + the description, excluding the param nodes. Used to help in an
+   * ES5 to ES6 class converter only.
+   */
+  public JSDocInfo cloneClassDoc() {
+    JSDocInfo other = new JSDocInfo();
+    other.info = this.info == null ? null : this.info.cloneClassDoc();
+    other.documentation = this.documentation;
+    other.visibility = this.visibility;
+    other.bitset = this.bitset;
+    other.type = cloneType(this.type, false);
+    other.thisType = cloneType(this.thisType, false);
+    other.includeDocumentation = this.includeDocumentation;
+    other.originalCommentPosition = this.originalCommentPosition;
+    other.setConstructor(false);
+    other.setStruct(false);
+    if (!isInterface() && other.info != null) {
+      other.info.baseType = null;
+    }
+    return other;
+  }
+
+  /**
+   * This is used to get only the parameter nodes. Used to help in an ES5 to ES6 converter class
+   * only.
+   */
+  public JSDocInfo cloneConstructorDoc() {
+    JSDocInfo other = new JSDocInfo();
+    other.info = this.info == null ? null : this.info.cloneConstructorDoc();
+    other.documentation =
+        this.documentation == null ? null : this.documentation.cloneConstructorDoc();
+    return other;
+  }
+
   private static JSTypeExpression cloneType(JSTypeExpression expr, boolean cloneTypeNodes) {
     if (expr != null) {
       return cloneTypeNodes ? expr.copy() : expr;
@@ -616,6 +694,7 @@ public class JSDocInfo implements Serializable {
         && Objects.equals(jsDoc1.getType(), jsDoc2.getType())
         && Objects.equals(jsDoc1.getVersion(), jsDoc2.getVersion())
         && Objects.equals(jsDoc1.getVisibility(), jsDoc2.getVisibility())
+        && Objects.equals(jsDoc1.getClosurePrimitiveId(), jsDoc2.getClosurePrimitiveId())
         && jsDoc1.bitset == jsDoc2.bitset;
   }
 
@@ -660,7 +739,11 @@ public class JSDocInfo implements Serializable {
   }
 
   void setStruct() {
-    setFlag(true, MASK_STRUCT);
+    setStruct(true);
+  }
+
+  void setStruct(boolean value) {
+    setFlag(value, MASK_STRUCT);
   }
 
   void setDict() {
@@ -965,27 +1048,41 @@ public class JSDocInfo implements Serializable {
   }
 
   /**
-   * @return Whether there is a declaration present on this {@link JSDocInfo}.
+   * Returns whether there is a declaration present on this {@link JSDocInfo}.
+   *
+   * <p>Does not consider `@const` (without a following type) to indicate a declaration. Whether you
+   * want this method, or the`containsDeclaration` that includes const, depends on whether you want
+   * to consider {@code /** @const * / a.b.c = 0} a declaration or not.
    */
-  public boolean containsDeclaration() {
+  public boolean containsDeclarationExcludingTypelessConst() {
     return (hasType()
         || hasReturnType()
         || hasEnumParameterType()
         || hasTypedefType()
         || hasThisType()
         || getParameterCount() > 0
+        || getImplementedInterfaceCount() > 0
+        || hasBaseType()
         || visibility != Visibility.INHERITED
-        || getFlag(MASK_CONSTANT
-            | MASK_CONSTRUCTOR
-            | MASK_DEFINE
-            | MASK_OVERRIDE
-            | MASK_EXPORT
-            | MASK_EXPOSE
-            | MASK_DEPRECATED
-            | MASK_INTERFACE
-            | MASK_IMPLICITCAST
-            | MASK_NOSIDEEFFECTS
-            | MASK_RECORD));
+        || getFlag(
+            MASK_CONSTRUCTOR
+                | MASK_DEFINE
+                | MASK_OVERRIDE
+                | MASK_EXPORT
+                | MASK_EXPOSE
+                | MASK_DEPRECATED
+                | MASK_INTERFACE
+                | MASK_IMPLICITCAST
+                | MASK_NOSIDEEFFECTS
+                | MASK_RECORD));
+  }
+
+  /**
+   * Returns whether there is a declaration present on this {@link JSDocInfo}, including a
+   * typeless @const like {@code /** @const * / a.b.c = 0}
+   */
+  public boolean containsDeclaration() {
+    return containsDeclarationExcludingTypelessConst() || getFlag(MASK_CONSTANT);
   }
 
   /**
@@ -1099,18 +1196,16 @@ public class JSDocInfo implements Serializable {
   }
 
   /**
-   * Sets suppressed warnings.
+   * Adds a set of suppressions to the (possibly currently empty) set of suppressions.
    * @param suppressions A list of suppressed warning types.
    */
-  boolean setSuppressions(Set<String> suppressions) {
+  void addSuppressions(Set<String> suppressions) {
     lazyInitInfo();
 
     if (info.suppressions != null) {
-      return false;
+      suppressions = Sets.union(suppressions, info.suppressions);
     }
-
     info.suppressions = ImmutableSet.copyOf(suppressions);
-    return true;
   }
 
   /**
@@ -1664,18 +1759,36 @@ public class JSDocInfo implements Serializable {
   /**
    * Gets the name we're lending to in a {@code @lends} annotation.
    *
-   * <p>In many reflection APIs, you pass an anonymous object to a function,
-   * and that function mixes the anonymous object into another object.
-   * The {@code @lends} annotation allows the type system to track
-   * those property assignments.
+   * <p>In many reflection APIs, you pass an anonymous object to a function, and that function mixes
+   * the anonymous object into another object. The {@code @lends} annotation allows the type system
+   * to track those property assignments.
    */
-  public String getLendsName() {
+  public JSTypeExpression getLendsName() {
     return (info == null) ? null : info.lendsName;
   }
 
-  void setLendsName(String name) {
+  void setLendsName(JSTypeExpression name) {
     lazyInitInfo();
     info.lendsName = name;
+  }
+
+  public boolean hasLendsName() {
+    return getLendsName() != null;
+  }
+
+  void setClosurePrimitiveId(String closurePrimitiveId) {
+    lazyInitInfo();
+    info.closurePrimitiveId = closurePrimitiveId;
+  }
+
+  /** Returns the {@code @closurePrimitive {id}} identifier */
+  public String getClosurePrimitiveId() {
+    return (info == null) ? null : info.closurePrimitiveId;
+  }
+
+  /** Whether this JSDoc is annotated with {@code @closurePrimitive} */
+  public boolean hasClosurePrimitiveId() {
+    return getClosurePrimitiveId() != null;
   }
 
   /**
@@ -2016,7 +2129,11 @@ public class JSDocInfo implements Serializable {
         ? ImmutableList.<Marker>of() : documentation.markers;
   }
 
-  /** Gets the template type name. */
+  /**
+   * Gets the @template type names.
+   *
+   * <p>Excludes @template types from TTL; get those with {@link #getTypeTransformations()}
+   */
   public ImmutableList<String> getTemplateTypeNames() {
     if (info == null || info.templateTypeNames == null) {
       return ImmutableList.of();
@@ -2033,10 +2150,10 @@ public class JSDocInfo implements Serializable {
   }
 
   /**
-   * Returns a collection of all type nodes that are a part of this JSDocInfo.
-   * This includes @type, @this, @extends, @implements, @param, @throws,
-   * and @return.  Any future type specific JSDoc should make sure to add the
-   * appropriate nodes here.
+   * Returns a collection of all type nodes that are a part of this JSDocInfo. This
+   * includes @type, @this, @extends, @implements, @param, @throws, @lends, and @return. Any future
+   * type specific JSDoc should make sure to add the appropriate nodes here.
+   *
    * @return collection of all type nodes
    */
   public Collection<Node> getTypeNodes() {
@@ -2085,6 +2202,10 @@ public class JSDocInfo implements Serializable {
             nodes.add(thrownType.getRoot());
           }
         }
+      }
+
+      if (info.lendsName != null) {
+        nodes.add(info.lendsName.getRoot());
       }
     }
 

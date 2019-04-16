@@ -16,10 +16,30 @@
 
 package com.google.javascript.jscomp;
 
-/**
- * @author johnlenz@google.com (John Lenz)
- */
+import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
+
+/** @author johnlenz@google.com (John Lenz) */
+@RunWith(JUnit4.class)
 public final class MinimizeExitPointsTest extends CompilerTestCase {
+  @Override
+  @Before
+  public void setUp() throws Exception {
+    super.setUp();
+
+    disableScriptFeatureValidation();
+  }
+
+  @Override
+  protected CompilerOptions getOptions() {
+    CompilerOptions options = super.getOptions();
+    options.setLanguageIn(LanguageMode.ECMASCRIPT_2018);
+    return options;
+  }
+
   @Override
   protected CompilerPass getProcessor(final Compiler compiler) {
     return new PeepholeOptimizationsPass(compiler, getName(), new MinimizeExitPoints());
@@ -38,7 +58,8 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
     test(js, expected);
   }
 
-  public void testBreakOptimization() throws Exception {
+  @Test
+  public void testBreakOptimization() {
     fold("f:{if(true){a();break f;}else;b();}",
          "f:{if(true){a()}else{b()}}");
     fold("f:{if(false){a();break f;}else;b();break f;}",
@@ -76,12 +97,14 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
         "function f() { a: {} }");
   }
 
-  public void testFunctionReturnOptimization1() throws Exception {
+  @Test
+  public void testFunctionReturnOptimization1() {
     fold("function f(){return}",
          "function f(){}");
   }
 
-  public void testFunctionReturnOptimization2() throws Exception {
+  @Test
+  public void testFunctionReturnOptimization2() {
     fold("function f(){if(a()){b();if(c())return;}}",
          "function f(){if(a()){b();if(c());}}");
     fold("function f(){if(x)return; x=3; return; }",
@@ -132,7 +155,8 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
          "function f(){try{g:if(a()){throw 9;}}finally{return}}");
   }
 
-  public void testWhileContinueOptimization() throws Exception {
+  @Test
+  public void testWhileContinueOptimization() {
     fold("while(true){if(x)continue; x=3; continue; }",
          "while(true)if(x);else x=3");
     foldSame("while(true){a();continue;b();}");
@@ -172,7 +196,8 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
          "while(true){g:if(a());else;}");
   }
 
-  public void testDoContinueOptimization() throws Exception {
+  @Test
+  public void testDoContinueOptimization() {
     fold("do{if(x)continue; x=3; continue; }while(true)",
          "do if(x); else x=3; while(true)");
     foldSame("do{a();continue;b()}while(true)");
@@ -221,7 +246,8 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
     foldSame("do { foo(); switch (x) { case 1: break; default: f()}; } while(false)");
   }
 
-  public void testForContinueOptimization() throws Exception {
+  @Test
+  public void testForContinueOptimization() {
     fold("for(x in y){if(x)continue; x=3; continue; }",
          "for(x in y)if(x);else x=3");
     foldSame("for(x in y){a();continue;b()}");
@@ -245,6 +271,23 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
         "for(x of y){if(a()){b();}else{c();}}");
     fold("for(x of y){if(a()){b();}else{c();continue;}}",
         "for(x of y){if(a()){b();}else{c();}}");
+
+    fold(
+        "async () => { for await (x of y){if(x)continue; x=3; continue; }}",
+        "async () => { for await (x of y)if(x);else x=3 }");
+    foldSame("async () => { for await (x of y){a();continue;b()}}");
+    fold(
+        "async () => { for await (x of y){if(true){a();continue;}else;b();}}",
+        "async () => { for await (x of y){if(true)a();else b();}}");
+    fold(
+        "async () => { for await (x of y){if(false){a();continue;}else;b();continue;}}",
+        "async () => { for await (x of y){if(false){a();}else{b()}}}");
+    fold(
+        "async () => { for await (x of y){if(a()){b();continue;}else;c();}}",
+        "async () => { for await (x of y){if(a()){b();}else{c();}}}");
+    fold(
+        "async () => { for await (x of y){if(a()){b();}else{c();continue;}}}",
+        "async () => { for await (x of y){if(a()){b();}else{c();}}}");
 
     fold("for(x=0;x<y;x++){if(a()){b();continue;}else;}",
          "for(x=0;x<y;x++){if(a()){b();}else;}");
@@ -273,26 +316,30 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
          "for(x=0;x<y;x++){g:if(a());else;}");
   }
 
-  public void testCodeMotionDoesntBreakFunctionHoisting() throws Exception {
+  @Test
+  public void testCodeMotionDoesntBreakFunctionHoisting() {
     setAcceptedLanguage(CompilerOptions.LanguageMode.ECMASCRIPT_2015);
     fold("function f() { if (x) return; foo(); function foo() {} }",
          "function f() { if (x); else { function foo() {} foo(); } }");
   }
 
-  public void testDontRemoveBreakInTryFinally() throws Exception {
+  @Test
+  public void testDontRemoveBreakInTryFinally() {
     foldSame("function f() {b:try{throw 9} finally {break b} return 1;}");
   }
 
   /**
-   * See https://github.com/google/closure-compiler/issues/554
-   * The 'break' prevents the 'b=false' from being evaluated.
-   * If we fold the do-while to 'do;while(b=false)' the code will
-   * be incorrect.
+   * The 'break' prevents the 'b=false' from being evaluated. If we fold the do-while to
+   * 'do;while(b=false)' the code will be incorrect.
+   *
+   * @see https://github.com/google/closure-compiler/issues/554
    */
+  @Test
   public void testDontFoldBreakInDoWhileIfConditionHasSideEffects() {
     foldSame("var b=true;do{break}while(b=false);");
   }
 
+  @Test
   public void testSwitchExitPoints1() {
     fold(
         "switch (x) { case 1: f(); break; }",
@@ -305,6 +352,7 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
         "switch (x) { case 1: if (x) { f();        } break; default: g();        }");
   }
 
+  @Test
   public void testFoldBlockScopedVariables() {
     // When moving block-scoped variable declarations into inner blocks, first convert them to
     // "var" declarations to avoid breaking any references in inner functions.
@@ -329,6 +377,7 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
         "function f() { if (x) { if (y) {} else { var c = 3; } } }");
   }
 
+  @Test
   public void testDontFoldBlockScopedVariablesInLoops() {
     // Don't move block-scoped declarations into inner blocks inside a loop, since converting
     // let/const declarations to vars in a loop can cause incorrect semantics.
@@ -350,5 +399,6 @@ public final class MinimizeExitPointsTest extends CompilerTestCase {
     foldSame("function f() { do { if (true) {return;} let c = 3; } while (x); }");
     foldSame("function f() { for (;;) { if (true) { return; } let c = 3; } }");
     foldSame("function f(y) { for(x in []){ if(x) { return; } let c = 3; } }");
+    foldSame("async function f(y) { for await (x in []){ if(x) { return; } let c = 3; } }");
   }
 }

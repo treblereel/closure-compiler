@@ -92,12 +92,6 @@ Window.prototype.frames;
 Window.prototype.fullScreen;
 
 /**
- * @return {!Promise<!BatteryManager>}
- * @see http://www.w3.org/TR/battery-status/
- */
-Navigator.prototype.getBattery = function() {};
-
-/**
  * @see https://developer.mozilla.org/en/DOM/Storage#globalStorage
  */
 Window.prototype.globalStorage;
@@ -550,14 +544,14 @@ Document.prototype.queryCommandValue;
 
 /**
  * @see https://developer.mozilla.org/en/DOM/document.write
- * @param {string} text
+ * @param {!TrustedHTML|string} text
  * @return {undefined}
  */
 Document.prototype.write = function(text) {};
 
 /**
  * @see https://developer.mozilla.org/en/DOM/document.writeln
- * @param {string} text
+ * @param {!TrustedHTML|string} text
  * @return {undefined}
  */
 Document.prototype.writeln = function(text) {};
@@ -577,7 +571,7 @@ Document.prototype.getBoxObjectFor = function(element) {};
 // http://lxr.mozilla.org/mozilla1.8/source/dom/public/idl/range/nsIDOMNSRange.idl
 
 /**
- * @param {string} tag
+ * @param {!TrustedHTML|string} tag
  * @return {DocumentFragment}
  */
 Range.prototype.createContextualFragment;
@@ -792,8 +786,12 @@ Element.prototype.blur = function() {};
 /** @return {undefined} */
 Element.prototype.click = function() {};
 
-/** @return {undefined} */
-Element.prototype.focus = function() {};
+/**
+ * @param {{preventScroll: boolean}=} focusOption
+ * @return {undefined}
+ * @see https://html.spec.whatwg.org/multipage/interaction.html#focus-management-apis
+ */
+Element.prototype.focus = function(focusOption) {};
 
 /** @type {number} */
 HTMLInputElement.prototype.selectionStart;

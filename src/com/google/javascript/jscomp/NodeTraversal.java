@@ -21,6 +21,8 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.nullToEmpty;
 
+import com.google.javascript.jscomp.modules.ModuleMetadataMap;
+import com.google.javascript.jscomp.modules.ModuleMetadataMap.ModuleMetadata;
 import com.google.javascript.rhino.InputId;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
@@ -28,7 +30,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
@@ -42,6 +43,9 @@ public class NodeTraversal {
 
   /** Contains the current node*/
   private Node curNode;
+
+  /** Contains the enclosing SCRIPT node if there is one, otherwise null. */
+  private Node curScript;
 
   /** The change scope for the current node being visiteds */
   private Node currentChangeScope;
@@ -141,6 +145,17 @@ public class NodeTraversal {
     }
   }
 
+  /**
+   * Abstract callback to visit all non-extern nodes in postorder. Note: Even though type-summary
+   * nodes are included under the externs roots, they are traversed by this callback.
+   */
+  public abstract static class ExternsSkippingCallback implements Callback {
+    @Override
+    public final boolean shouldTraverse(NodeTraversal t, Node n, Node parent) {
+      return !n.isScript() || !n.isFromExterns() || NodeUtil.isFromTypeSummary(n);
+    }
+  }
+
   /** Abstract callback to visit all nodes in postorder. */
   @FunctionalInterface
   public static interface AbstractPostOrderCallbackInterface {
@@ -208,73 +223,101 @@ public class NodeTraversal {
   }
 
   /**
-   * Abstract callback that knows when goog.modules (and in the future ES6 modules) are entered
-   * and exited. This includes both whole file modules and bundled modules.
+   * Abstract callback that knows when goog.provide, goog.module, and ES modules are entered and
+   * exited. This includes both whole file modules and bundled modules.
    */
-  public abstract static class AbstractModuleCallback implements ScopedCallback {
+  public abstract static class AbstractModuleCallback implements Callback {
+    protected final AbstractCompiler compiler;
+    private final ModuleMetadataMap moduleMetadataMap;
 
-    /**
-     * Called immediately after entering a module.
-     */
-    public abstract void enterModule(NodeTraversal t, Node scopeRoot);
+    private ModuleMetadata currentModule;
+    private Node scopeRoot;
+    private boolean inLoadModule;
 
-    /**
-     * Called immediately before exiting a module.
-     */
-    public abstract void exitModule(NodeTraversal t, Node scopeRoot);
+    AbstractModuleCallback(AbstractCompiler compiler, ModuleMetadataMap moduleMetadataMap) {
+      this.compiler = compiler;
+      this.moduleMetadataMap = moduleMetadataMap;
+    }
+
+    protected void enterModule(ModuleMetadata currentModule, Node moduleScopeRoot) {}
+
+    protected void exitModule(ModuleMetadata oldModule, Node moduleScopeRoot) {}
 
     @Override
-    public boolean shouldTraverse(NodeTraversal t, Node n, Node parent) {
+    public final boolean shouldTraverse(NodeTraversal t, Node n, Node parent) {
+      switch (n.getToken()) {
+        case SCRIPT:
+          currentModule =
+              moduleMetadataMap.getModulesByPath().get(t.getInput().getPath().toString());
+          checkNotNull(currentModule);
+          scopeRoot = n.hasChildren() && n.getFirstChild().isModuleBody() ? n.getFirstChild() : n;
+          enterModule(currentModule, scopeRoot);
+          break;
+        case BLOCK:
+          if (NodeUtil.isBundledGoogModuleScopeRoot(n)) {
+            scopeRoot = n;
+            inLoadModule = true;
+          }
+          break;
+        case CALL:
+          if (inLoadModule && n.getFirstChild().matchesQualifiedName("goog.module")) {
+            ModuleMetadata newModule =
+                moduleMetadataMap.getModulesByGoogNamespace().get(n.getLastChild().getString());
+            checkNotNull(newModule);
+            // In the event of multiple goog.module statements (an error), don't call enterModule
+            // more than once.
+            if (newModule != currentModule) {
+              currentModule = newModule;
+              enterModule(currentModule, scopeRoot);
+            }
+          }
+          break;
+        default:
+          break;
+      }
+      return shouldTraverse(t, n, currentModule, scopeRoot);
+    }
+
+    protected boolean shouldTraverse(
+        NodeTraversal t,
+        Node n,
+        @Nullable ModuleMetadata currentModule,
+        @Nullable Node moduleScopeRoot) {
       return true;
     }
 
     @Override
-    public final void enterScope(NodeTraversal t) {
-      Node scopeRoot = t.getScopeRoot();
-      if (NodeUtil.isModuleScopeRoot(scopeRoot)) {
-        enterModule(t, scopeRoot);
+    public final void visit(NodeTraversal t, Node n, Node parent) {
+      switch (n.getToken()) {
+        case SCRIPT:
+          checkNotNull(currentModule);
+          exitModule(currentModule, scopeRoot);
+          currentModule = null;
+          scopeRoot = null;
+          break;
+        case BLOCK:
+          if (NodeUtil.isBundledGoogModuleScopeRoot(n)) {
+            checkNotNull(currentModule);
+            exitModule(currentModule, scopeRoot);
+            scopeRoot = n.getGrandparent().getGrandparent();
+            inLoadModule = false;
+            currentModule =
+                moduleMetadataMap.getModulesByPath().get(t.getInput().getPath().toString());
+            checkNotNull(currentModule);
+          }
+          break;
+        default:
+          break;
       }
+
+      visit(t, n, currentModule, scopeRoot);
     }
 
-    @Override
-    public final void exitScope(NodeTraversal t) {
-      Node scopeRoot = t.getScopeRoot();
-      if (NodeUtil.isModuleScopeRoot(scopeRoot)) {
-        exitModule(t, scopeRoot);
-      }
-    }
-  }
-
-  /**
-   * Abstract callback to visit a pruned set of nodes.
-   */
-  public abstract static class AbstractNodeTypePruningCallback
-        implements Callback {
-    private final Set<Token> nodeTypes;
-    private final boolean include;
-
-    /**
-     * Creates an abstract pruned callback.
-     * @param nodeTypes the nodes to include in the traversal
-     */
-    public AbstractNodeTypePruningCallback(Set<Token> nodeTypes) {
-      this(nodeTypes, true);
-    }
-
-    /**
-     * Creates an abstract pruned callback.
-     * @param nodeTypes the nodes to include/exclude in the traversal
-     * @param include whether to include or exclude the nodes in the traversal
-     */
-    public AbstractNodeTypePruningCallback(Set<Token> nodeTypes, boolean include) {
-      this.nodeTypes = nodeTypes;
-      this.include = include;
-    }
-
-    @Override
-    public boolean shouldTraverse(NodeTraversal nodeTraversal, Node n, Node parent) {
-      return include == nodeTypes.contains(n.getToken());
-    }
+    protected void visit(
+        NodeTraversal t,
+        Node n,
+        @Nullable ModuleMetadata currentModule,
+        @Nullable Node moduleScopeRoot) {}
   }
 
   /**
@@ -406,8 +449,9 @@ public class NodeTraversal {
   }
 
   /**
-   * Traverses a parse tree recursively with a scope, starting at that scope's
-   * root.
+   * Traverses a parse tree recursively with a scope, starting at that scope's root. Omits children
+   * of the scope root that are traversed in the outer scope (specifically, non-bleeding function
+   * and class name nodes, class extends clauses, and computed property keys).
    */
   void traverseAtScope(AbstractScope<?, ?> s) {
     Node n = s.getRootNode();
@@ -423,45 +467,79 @@ public class NodeTraversal {
       pushScope(parentScopes.pop(), true);
     }
     if (n.isFunction()) {
-      pushScope(s);
+      if (callback.shouldTraverse(this, n, null)) {
+        pushScope(s);
 
-      Node args = n.getSecondChild();
-      Node body = args.getNext();
-      traverseBranch(args, n);
-      traverseBranch(body, n);
+        Node fnName = n.getFirstChild();
+        Node args = fnName.getNext();
+        Node body = args.getNext();
+        if (!NodeUtil.isFunctionDeclaration(n)) {
+          // Only traverse the function name if it's a bleeding function expression name.
+          traverseBranch(fnName, n);
+        }
+        traverseBranch(args, n);
+        traverseBranch(body, n);
 
-      popScope();
+        popScope();
+        callback.visit(this, n, null);
+      }
+    } else if (n.isClass()) {
+      if (callback.shouldTraverse(this, n, null)) {
+        pushScope(s);
+
+        Node className = n.getFirstChild();
+        Node body = n.getLastChild();
+
+        if (NodeUtil.isClassExpression(n)) {
+          // Only traverse the class name if it's a bleeding class expression name.
+          traverseBranch(className, n);
+        }
+        // Omit the extends node, which is in the outer scope. Computed property keys are already
+        // excluded by traverseClassMembers.
+        traverseBranch(body, n);
+
+        popScope();
+        callback.visit(this, n, null);
+      }
     } else if (n.isBlock()) {
-      pushScope(s);
+      if (callback.shouldTraverse(this, n, null)) {
+        pushScope(s);
 
-      // traverseBranch is not called here to avoid re-creating the block scope.
-      traverseChildren(n);
+        // traverseBranch is not called here to avoid re-creating the block scope.
+        traverseChildren(n);
 
-      popScope();
+        popScope();
+        callback.visit(this, n, null);
+      }
     } else if (NodeUtil.isAnyFor(n)) {
-      // ES6 Creates a separate for scope and for-body scope
-      checkState(scopeCreator.hasBlockScope());
+      if (callback.shouldTraverse(this, n, null)) {
+        // ES6 Creates a separate for scope and for-body scope
+        checkState(scopeCreator.hasBlockScope());
 
-      pushScope(s);
+        pushScope(s);
 
-      Node forAssignmentParam = n.getFirstChild();
-      Node forIterableParam = forAssignmentParam.getNext();
-      Node forBodyScope = forIterableParam.getNext();
-      traverseBranch(forAssignmentParam, n);
-      traverseBranch(forIterableParam, n);
-      traverseBranch(forBodyScope, n);
+        Node forAssignmentParam = n.getFirstChild();
+        Node forIterableParam = forAssignmentParam.getNext();
+        Node forBodyScope = forIterableParam.getNext();
+        traverseBranch(forAssignmentParam, n);
+        traverseBranch(forIterableParam, n);
+        traverseBranch(forBodyScope, n);
 
-      popScope();
+        popScope();
+        callback.visit(this, n, null);
+      }
     } else if (n.isSwitch()) {
-      // ES6 creates a separate switch scope with cases
-      checkState(scopeCreator.hasBlockScope());
+      if (callback.shouldTraverse(this, n, null)) {
+        // ES6 creates a separate switch scope with cases
+        checkState(scopeCreator.hasBlockScope());
 
-      pushScope(s);
+        pushScope(s);
 
-      traverseChildren(n);
+        traverseChildren(n);
 
-      popScope();
-
+        popScope();
+        callback.visit(this, n, null);
+      }
     } else {
       checkState(s.isGlobal() || s.isModuleScope(), "Expected global or module scope. Got:", s);
       traverseWithScope(n, s);
@@ -569,7 +647,8 @@ public class NodeTraversal {
       }
     };
 
-    NodeTraversal.traverseEs6ScopeRoot(compiler, scopeNode, scb, scopeCreator);
+    NodeTraversal t = new NodeTraversal(compiler, scb, scopeCreator);
+    t.traverseScopeRoot(scopeNode);
   }
 
   /**
@@ -712,40 +791,6 @@ public class NodeTraversal {
         });
   }
 
-  /**
-   * Use #traverse(AbstractCompiler, Node, Callback)
-   */
-  @Deprecated
-  public static final void traverseEs6(AbstractCompiler compiler, Node root, Callback cb) {
-    traverse(compiler, root, cb);
-  }
-
-  /** Traverses from a particular scope node using the ES6SyntacticScopeCreator */
-  private static void traverseEs6ScopeRoot(
-      AbstractCompiler compiler, Node scopeNode, Callback cb, MemoizedScopeCreator scopeCreator) {
-    NodeTraversal t = new NodeTraversal(compiler, cb, scopeCreator);
-    t.traverseScopeRoot(scopeNode);
-  }
-
-  /**
-   * @deprecated Use the ES6SyntacticScopeCreator instead.
-   */
-  @Deprecated
-  public static void traverseTyped(AbstractCompiler compiler, Node root, Callback cb) {
-    NodeTraversal t = new NodeTraversal(compiler, cb, SyntacticScopeCreator.makeTyped(compiler));
-    t.traverse(root);
-  }
-
-  /**
-   * @deprecated Use the ES6SyntacticScopeCreator instead.
-   */
-  @Deprecated
-  public static void traverseRootsTyped(
-      AbstractCompiler compiler, Callback cb, Node externs, Node root) {
-    NodeTraversal t = new NodeTraversal(compiler, cb, SyntacticScopeCreator.makeTyped(compiler));
-    t.traverseRoots(externs, root);
-  }
-
   private void handleScript(Node n, Node parent) {
     if (Thread.interrupted()) {
       throw new RuntimeException(new InterruptedException());
@@ -754,6 +799,7 @@ public class NodeTraversal {
     setInputId(n.getInputId(), getSourceName(n));
 
     curNode = n;
+    curScript = n;
     if (callback.shouldTraverse(this, n, parent)) {
       traverseChildren(n);
       curNode = n;
@@ -811,6 +857,15 @@ public class NodeTraversal {
   /** Traverses a function. */
   private void traverseFunction(Node n, Node parent) {
     final Node fnName = n.getFirstChild();
+    // NOTE: If a function declaration is the root of a traversal, then we will treat it as a
+    // function expression (since 'parent' is null, even though 'n' actually has a parent node) and
+    // traverse the function name before entering the scope, rather than afterwards. Removing the
+    // null check for 'parent' seems safe, but causes a rare crash when traverseScopeRoots is called
+    // by PeepholeOptimizationsPass on a function that somehow doesn't actually have a parent at all
+    // (presumably because it's already been removed from the AST?) so that doesn't actually work.
+    // This does not actually change anything, though, since rooting a traversal at a function node
+    // causes the function scope to be entered twice (unless using #traverseAtScope, which doesn't
+    // call this method), so that the name node is just always traversed inside the scope anyway.
     boolean isFunctionDeclaration = parent != null && NodeUtil.isFunctionDeclaration(n);
 
     if (isFunctionDeclaration) {
@@ -850,12 +905,11 @@ public class NodeTraversal {
    */
   private void traverseClass(Node n) {
     final Node className = n.getFirstChild();
-    boolean isClassExpression = NodeUtil.isClassExpression(n);
-
-    final Node extendsClause = n.getSecondChild();
+    final Node extendsClause = className.getNext();
     final Node body = extendsClause.getNext();
 
-    // Extends
+    boolean isClassExpression = NodeUtil.isClassExpression(n);
+
     traverseBranch(extendsClause, n);
 
     for (Node child = body.getFirstChild(); child != null;) {
@@ -1000,8 +1054,9 @@ public class NodeTraversal {
   public AbstractScope<?, ?> getAbstractScope() {
     AbstractScope<?, ?> scope = scopes.peek();
 
-    for (int i = 0; i < scopeRoots.size(); i++) {
-      scope = scopeCreator.createScope(scopeRoots.get(i), scope);
+    // NOTE(dylandavidson): Use for-each loop to avoid slow ArrayList#get performance.
+    for (Node scopeRoot : scopeRoots) {
+      scope = scopeCreator.createScope(scopeRoot, scope);
       scopes.push(scope);
     }
     scopeRoots.clear();
@@ -1207,6 +1262,16 @@ public class NodeTraversal {
   }
 
   /**
+   * Returns the SCRIPT node enclosing the current scope, or `null` if unknown
+   *
+   * <p>e.g. returns null if {@link #traverseInnerNode(Node, Node, AbstractScope)} was used
+   */
+  @Nullable
+  Node getCurrentScript() {
+    return curScript;
+  }
+
+  /**
    * @param n The current change scope, should be null when the traversal is complete.
    */
   private void setChangeScope(Node n) {
@@ -1232,6 +1297,7 @@ public class NodeTraversal {
     } else {
       setInputId(null, "");
     }
+    curScript = script;
   }
 
   /**
@@ -1270,29 +1336,6 @@ public class NodeTraversal {
 
   InputId getInputId() {
     return inputId;
-  }
-
-  /**
-   * Creates a JSError during NodeTraversal.
-   *
-   * @param n Determines the line and char position within the source file name
-   * @param type The DiagnosticType
-   * @param arguments Arguments to be incorporated into the message
-   */
-  public JSError makeError(Node n, CheckLevel level, DiagnosticType type,
-      String... arguments) {
-    return JSError.make(n, level, type, arguments);
-  }
-
-  /**
-   * Creates a JSError during NodeTraversal.
-   *
-   * @param n Determines the line and char position within the source file name
-   * @param type The DiagnosticType
-   * @param arguments Arguments to be incorporated into the message
-   */
-  public JSError makeError(Node n, DiagnosticType type, String... arguments) {
-    return JSError.make(n, type, arguments);
   }
 
   private String getBestSourceFileName(Node n) {

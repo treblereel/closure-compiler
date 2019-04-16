@@ -85,9 +85,11 @@ public class DepsGenerator {
       "DEPS_SAME_FILE",
       "Namespace \"{0}\" is both required and provided in the same file.");
 
-  static final DiagnosticType NEVER_PROVIDED_ERROR = DiagnosticType.error(
-      "DEPS_NEVER_PROVIDED",
-      "Namespace \"{0}\" is required but never provided.");
+  static final DiagnosticType NEVER_PROVIDED_ERROR =
+      DiagnosticType.error(
+          "DEPS_NEVER_PROVIDED",
+          "Namespace \"{0}\" is required but never provided.\nYou "
+              + "need to pass a library that has it in srcs or exports to your target''s deps.");
 
   static final DiagnosticType DUPE_PROVIDES_WARNING = DiagnosticType.warning(
       "DEPS_DUPE_PROVIDES",
@@ -231,7 +233,8 @@ public class DepsGenerator {
         // supported.
         ImmutableList.Builder<String> builder = ImmutableList.builder();
         for (String provide : provides) {
-          if (!provide.equals(mungedProvide)) {
+          if (!provide.equals(mungedProvide)
+              && !provide.equals(dependencyInfo.getPathRelativeToClosureBase())) {
             builder.add(provide);
           }
         }
@@ -336,9 +339,11 @@ public class DepsGenerator {
   private void reportDuplicateProvide(String namespace, DependencyInfo firstDep,
       DependencyInfo secondDep) {
     if (firstDep == secondDep) {
-      errorManager.report(CheckLevel.WARNING,
-          JSError.make(firstDep.getName(), -1, -1,
-              DUPE_PROVIDES_WARNING, namespace));
+      if (!firstDep.getPathRelativeToClosureBase().equals(namespace)) {
+        errorManager.report(
+            CheckLevel.WARNING,
+            JSError.make(firstDep.getName(), -1, -1, DUPE_PROVIDES_WARNING, namespace));
+      }
     } else {
       errorManager.report(CheckLevel.ERROR,
           JSError.make(secondDep.getName(), -1, -1,
@@ -427,18 +432,7 @@ public class DepsGenerator {
           reportNoDepsInDepsFile(file.getName());
         } else {
           for (DependencyInfo info : depInfos) {
-            // DepsFileParser adds an ES6 module's relative path to closure as a provide so that
-            // the resulting depgraph is valid. But we don't want to write this "fake" provide
-            // back out, so remove it here.
-            depsFiles.put(
-                info.getPathRelativeToClosureBase(),
-                SimpleDependencyInfo.Builder.from(info)
-                    .setProvides(
-                        info.getProvides()
-                            .stream()
-                            .filter(p -> !p.equals(info.getPathRelativeToClosureBase()))
-                            .collect(Collectors.toList()))
-                    .build());
+            depsFiles.put(info.getPathRelativeToClosureBase(), removeRelativePathProvide(info));
           }
         }
       }
@@ -452,12 +446,24 @@ public class DepsGenerator {
         List<DependencyInfo> srcInfos =
             depsParser.parseFileReader(src.getName(), src.getCodeReader());
         for (DependencyInfo info : srcInfos) {
-          depsFiles.put(info.getPathRelativeToClosureBase(), info);
+          depsFiles.put(info.getPathRelativeToClosureBase(), removeRelativePathProvide(info));
         }
       }
     }
 
     return depsFiles;
+  }
+
+  private DependencyInfo removeRelativePathProvide(DependencyInfo info) {
+    // DepsFileParser adds an ES6 module's relative path to closure as a provide so that
+    // the resulting depgraph is valid. But we don't want to write this "fake" provide
+    // back out, so remove it here.
+    return SimpleDependencyInfo.Builder.from(info)
+        .setProvides(
+            info.getProvides().stream()
+                .filter(p -> !p.equals(info.getPathRelativeToClosureBase()))
+                .collect(Collectors.toList()))
+        .build();
   }
 
   /**

@@ -20,9 +20,12 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableListMultimap;
+import com.google.common.collect.Iterables;
 import com.google.javascript.jscomp.AbstractCompiler.LifeCycleStage;
 import com.google.javascript.jscomp.OptimizeCalls.ReferenceMap;
 import com.google.javascript.rhino.IR;
+import com.google.javascript.rhino.JSDocInfo;
 import com.google.javascript.rhino.Node;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -53,9 +56,13 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
   @VisibleForTesting
   public void process(Node externs, Node root) {
     checkState(compiler.getLifeCycleStage() == LifeCycleStage.NORMALIZED);
-    ReferenceMap refMap = OptimizeCalls.buildPropAndGlobalNameReferenceMap(
-        compiler, externs, root);
-    process(externs, root, refMap);
+
+    OptimizeCalls.builder()
+        .setCompiler(compiler)
+        .setConsiderExterns(false)
+        .addPass(this)
+        .build()
+        .process(externs, root);
   }
 
   @Override
@@ -141,7 +148,7 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
     void tryEliminateUnusedArgs(ArrayList<Node> refs) {
       // An argument is unused if its position is greater than the number of declared parameters
       // or if it marked as unused.
-      List<Node> fns = ReferenceMap.getFunctionNodes(refs);
+      ImmutableListMultimap<Node, Node> fns = ReferenceMap.getFunctionNodes(refs);
       Preconditions.checkState(!fns.isEmpty());
 
       // Examine all function definitions that are ever assigned to the symbol to determine:
@@ -155,7 +162,7 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
       int maxFormalsCount = 0;
       int lowestUsedRest = Integer.MAX_VALUE;
       BitSet used = new BitSet();
-      for (Node fn : fns) {
+      for (Node fn : fns.values()) {
         Node paramList = NodeUtil.getFunctionParameters(fn);
         int index = -1;
         for (Node c = paramList.getFirstChild(); c != null; c = c.getNext()) {
@@ -262,7 +269,7 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
         }
       }
 
-      for (Node fn : fns) {
+      for (Node fn : fns.values()) {
         Node paramList = NodeUtil.getFunctionParameters(fn);
         Node param = paramList.getFirstChild();
         removeUnusedFunctionParameters(unremovable, param, 0);
@@ -475,7 +482,7 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
       }
     }
 
-    for (Node fn : ReferenceMap.getFunctionNodes(refs)) {
+    for (Node fn : ReferenceMap.getFunctionNodes(refs).values()) {
       eliminateParamsAfter(fn, maxArgs);
     }
   }
@@ -500,7 +507,7 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
       return;
     }
 
-    List<Node> fns = ReferenceMap.getFunctionNodes(refs);
+    ImmutableListMultimap<Node, Node> fns = ReferenceMap.getFunctionNodes(refs);
     if (fns.size() > 1) {
       // TODO(johnlenz): support moving simple constants.
       // This requires cloning the tree and avoiding adding additional calls/definitions that will
@@ -509,7 +516,7 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
     }
 
     // Only one definition is currently supported.
-    Node fn = fns.get(0);
+    Node fn = Iterables.getOnlyElement(fns.values());
 
     boolean continueLooking = adjustForConstraints(fn, parameters);
     if (!continueLooking) {
@@ -577,6 +584,11 @@ class OptimizeParameters implements CompilerPass, OptimizeCalls.CallGraphCompile
    * @return Whether there are any movable parameters.
    */
   private static boolean adjustForConstraints(Node fn, List<Parameter> parameters) {
+    JSDocInfo info = NodeUtil.getBestJSDocInfo(fn);
+    if (info != null && info.isNoInline()) {
+      return false;
+    }
+
     Node paramList = NodeUtil.getFunctionParameters(fn);
     Node lastFormal = paramList.getLastChild();
     int restIndex = Integer.MAX_VALUE;

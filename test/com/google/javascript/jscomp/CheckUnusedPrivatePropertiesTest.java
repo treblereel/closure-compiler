@@ -16,9 +16,13 @@
 
 package com.google.javascript.jscomp;
 
-/**
- * @author johnlenz@google.com (John Lenz)
- */
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
+
+/** @author johnlenz@google.com (John Lenz) */
+@RunWith(JUnit4.class)
 public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
 
   private static final String EXTERNS = lines(
@@ -41,7 +45,8 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
   }
 
   @Override
-  protected void setUp() throws Exception {
+  @Before
+  public void setUp() throws Exception {
     super.setUp();
     enableGatherExternProperties();
     enableTypeCheck();
@@ -68,17 +73,28 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     testSame(code);
   }
 
+  @Test
   public void testSimpleUnused1() {
     unused("/** @private */ this.a = 2");
     used("/** @private */ this.a = 2; alert(this.a);");
   }
 
+  @Test
   public void testConstructorPropertyUsed1() {
     unused("/** @constructor */ function C() {} /** @private */ C.prop = 1;");
     used("/** @constructor */ function C() {} /** @private */ C.prop = 1; alert(C.prop);");
     used("/** @constructor */ function C() {} /** @private */ C.prop = 1; function f(a) {a.prop}");
   }
 
+  @Test
+  public void testClassConstructorPropertyUnused1() {
+    disableTypeCheck();
+
+    // Don't ever warn about unused private constructors
+    used("class C { /** @private */ constructor() {} }; ");
+  }
+
+  @Test
   public void testClassPropUnused1() {
     disableTypeCheck();
 
@@ -86,11 +102,13 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     unused("class C { constructor() { /** @private */ this.a = 2 } }");
   }
 
+  @Test
   public void testClassPropUnused2() {
     unused("/** @constructor */ function C() { /** @private */ this.prop = 1; }");
     used("/** @constructor */ function C() {/** @private */ this.prop = 1;} alert(some.prop);");
   }
 
+  @Test
   public void testClassMethodUnused1() {
     disableTypeCheck();
 
@@ -106,6 +124,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     used("class C { constructor() {}\n  /** @private */ ['method']() {} }\n new C()['method']();");
   }
 
+  @Test
   public void testSimple2() {
     // A property defined on "this" can be removed, even when defined
     // as part of an expression
@@ -114,6 +133,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     unused("/** @private */ this.a = 1; x = (f(), this.a = 2)");
   }
 
+  @Test
   public void testSimple3() {
     // A property defined on an object other than "this" can not be removed.
     used("y.a = 2");
@@ -123,6 +143,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     used("y.a = 2; /** @private */ this.a = 1; alert(x.a)");
   }
 
+  @Test
   public void testObjLit() {
     // A property defined on an object other than "this" is considered a use.
     used("({a:2})");
@@ -132,18 +153,20 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     used("x = ({a:0}); /** @private */ this.a = 1; alert(x.a)");
   }
 
+  @Test
   public void testExtern() {
     // A property defined in the externs and isn't a warning.
     testSame("this.ext = 2");
   }
 
+  @Test
   public void testExport() {
     // An exported property can not be removed.
     testSame("this.ext = 2; window['export'] = this.ext;");
     testSame("function f() { this.ext = 2; } window['export'] = this.ext;");
   }
 
-
+  @Test
   public void testAssignOp1() {
     // Properties defined using a compound assignment can be removed if the
     // result of the assignment expression is not immediately used.
@@ -154,6 +177,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     used("/** @private */ this.x; this.x += 2; x.x;");
   }
 
+  @Test
   public void testAssignOp2() {
     // Properties defined using a compound assignment can be removed if the
     // result of the assignment expression is not immediately used.
@@ -162,6 +186,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     used("/** @private */ this.a; x = (f(), this.a += 2)");
   }
 
+  @Test
   public void testInc1() {
     // Increments and Decrements are handled similarly to compound assignments
     // but need a placeholder value when replaced.
@@ -174,6 +199,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     used("/** @private */ this.x; --this.x; x = this.x;");
   }
 
+  @Test
   public void testInc2() {
     // Increments and Decrements are handled similarly to compound assignments
     unused("/** @private */ this.a; this.a++, f()");
@@ -185,12 +211,14 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
     used("/** @private */ this.a; x = (f(), --this.a)");
   }
 
+  @Test
   public void testJSCompiler_renameProperty() {
     // JSCompiler_renameProperty introduces a use of the property
     used("/** @private */ this.a = 2; x[JSCompiler_renameProperty('a')]");
     used("/** @private */ this.a = 2; JSCompiler_renameProperty('a')");
   }
 
+  @Test
   public void testForIn() {
     // This is the basic assumption that this pass makes:
     // that it can warn even if it is used indirectly in a for-in loop
@@ -201,6 +229,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
         "for (var a in new X()) { alert(x[a]) }"));
   }
 
+  @Test
   public void testObjectReflection1() {
     // Verify reflection prevents warning.
     used(lines(
@@ -222,6 +251,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
             "use($jscomp.reflectObject(A, {foo: 'foo'}));"));
   }
 
+  @Test
   public void testObjectReflection2() {
     // Any object literal definition prevents warning.
     used(lines(
@@ -241,6 +271,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
             "use({['foo']: 'foo'});"));
   }
 
+  @Test
   public void testPrototypeProps1() {
     unused(lines(
         "/** @constructor */ function A() {this.foo = 1;}",
@@ -249,6 +280,7 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
         "new A().method()"));
   }
 
+  @Test
   public void testPrototypeProps2() {
     // don't warn about properties that are exported by convention
     used(lines(
@@ -258,12 +290,14 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
         "new A().method()"));
   }
 
+  @Test
   public void testTypedef() {
     used(lines(
         "/** @constructor */ function A() {}",
         "/** @private @typedef {string} */ A.typedef_;"));
   }
 
+  @Test
   public void testInterface() {
     used(lines(
         "/** @constructor */ function A() {}",
@@ -274,10 +308,12 @@ public final class CheckUnusedPrivatePropertiesTest extends CompilerTestCase {
         "A.Interface = function() {};"));
   }
 
+  @Test
   public void testConstructorProperty1() {
     unused("/** @constructor */ function C() {} /** @private */ C.prop = 1;");
   }
 
+  @Test
   public void testConstructorProperty2() {
     used(
         "/** @constructor */ function C() {} "

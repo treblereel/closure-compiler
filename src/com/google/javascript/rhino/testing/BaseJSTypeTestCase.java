@@ -39,12 +39,15 @@
 
 package com.google.javascript.rhino.testing;
 
+import static com.google.common.truth.Truth.assertWithMessage;
+import static com.google.javascript.rhino.testing.TypeSubject.assertType;
+import static com.google.javascript.rhino.testing.TypeSubject.types;
+
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.javascript.rhino.JSTypeExpression;
 import com.google.javascript.rhino.Node;
-import com.google.javascript.rhino.jstype.FunctionBuilder;
 import com.google.javascript.rhino.jstype.FunctionType;
 import com.google.javascript.rhino.jstype.JSType;
 import com.google.javascript.rhino.jstype.JSTypeNative;
@@ -52,9 +55,12 @@ import com.google.javascript.rhino.jstype.JSTypeRegistry;
 import com.google.javascript.rhino.jstype.ObjectType;
 import com.google.javascript.rhino.jstype.RecordTypeBuilder;
 import com.google.javascript.rhino.jstype.TemplatizedType;
-import junit.framework.TestCase;
+import org.junit.Before;
 
-public abstract class BaseJSTypeTestCase extends TestCase {
+/** A base class for tests on {@code JSType}s. */
+public abstract class BaseJSTypeTestCase {
+  protected static final String FORWARD_DECLARED_TYPE_NAME = "forwardDeclared";
+
   protected static final Joiner LINE_JOINER = Joiner.on('\n');
 
   protected JSTypeRegistry registry;
@@ -103,11 +109,10 @@ public abstract class BaseJSTypeTestCase extends TestCase {
 
   protected int NATIVE_PROPERTIES_COUNT;
 
-  @Override
-  protected void setUp() throws Exception {
-    super.setUp();
+  @Before
+  public void setUp() throws Exception {
     errorReporter = new TestErrorReporter(null, null);
-    registry = new JSTypeRegistry(errorReporter, ImmutableSet.of("forwardDeclared"));
+    registry = new JSTypeRegistry(errorReporter, ImmutableSet.of(FORWARD_DECLARED_TYPE_NAME));
     initTypes();
   }
 
@@ -320,9 +325,8 @@ public abstract class BaseJSTypeTestCase extends TestCase {
   private static void addMethod(
       JSTypeRegistry registry, ObjectType receivingType, String methodName,
       JSType returnType) {
-    receivingType.defineDeclaredProperty(methodName,
-        new FunctionBuilder(registry).withReturnType(returnType).build(),
-        null);
+    receivingType.defineDeclaredProperty(
+        methodName, FunctionType.builder(registry).withReturnType(returnType).build(), null);
   }
 
   protected JSType createUnionType(JSType... variants) {
@@ -368,11 +372,11 @@ public abstract class BaseJSTypeTestCase extends TestCase {
   }
 
   protected final void assertTypeEquals(JSType a, JSType b) {
-    Asserts.assertTypeEquals(a, b);
+    assertType(b).isStructurallyEqualTo(a);
   }
 
   protected final void assertTypeEquals(String msg, JSType a, JSType b) {
-    Asserts.assertTypeEquals(msg, a, b);
+    assertWithMessage(msg).about(types()).that(b).isStructurallyEqualTo(a);
   }
 
   /**
@@ -532,7 +536,7 @@ public abstract class BaseJSTypeTestCase extends TestCase {
       "function ActiveXObject(progId, opt_location) {}");
 
   protected final void assertTypeNotEquals(JSType a, JSType b) {
-    Asserts.assertTypeNotEquals(a, b);
+    assertType(b).isNotEqualTo(a);
   }
 
   protected static String lines(String line) {

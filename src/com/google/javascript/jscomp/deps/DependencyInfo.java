@@ -136,14 +136,20 @@ public interface DependencyInfo extends Serializable {
 
   ImmutableList<String> getRequiredSymbols();
 
-  /** Gets the symbols weakly required by this file. (i.e. for typechecking only) */
-  ImmutableList<String> getWeakRequires();
+  /** Gets the symbols type-required by this file (i.e. for typechecking only). */
+  ImmutableList<String> getTypeRequires();
 
   /** Gets the loading information for this file. */
   ImmutableMap<String, String> getLoadFlags();
 
   /** Whether the symbol is provided by a module */
   boolean isModule();
+
+  /** Whether the file '@externs' annotation. */
+  boolean getHasExternsAnnotation();
+
+  /** Whether the file has the '@nocompile' annotation. */
+  boolean getHasNoCompileAnnotation();
 
   /**
    * Abstract base implementation that defines derived accessors such

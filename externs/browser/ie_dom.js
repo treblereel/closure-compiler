@@ -179,7 +179,7 @@ Node.prototype.document;
  * Inserts the given HTML text into the element at the location.
  * @param {string} sWhere Where to insert the HTML text, one of 'beforeBegin',
  *     'afterBegin', 'beforeEnd', 'afterEnd'.
- * @param {string} sText HTML text to insert.
+ * @param {!TrustedHTML|string} sText HTML text to insert.
  * @see http://msdn.microsoft.com/en-us/library/ms536452(VS.85).aspx
  * @return {undefined}
  */
@@ -215,12 +215,6 @@ Node.prototype.nodeTypeString;
  * @see http://msdn.microsoft.com/en-us/library/ms762237(VS.85).aspx
  */
 Node.prototype.parsed;
-
-/**
- * @type {Element}
- * @see http://msdn.microsoft.com/en-us/library/ms534327(VS.85).aspx
- */
-Node.prototype.parentElement;
 
 /**
  * @type {boolean}
@@ -481,6 +475,12 @@ Window.prototype.showModelessDialog;
  * @const {!Object}
  */
 Window.prototype.external;
+
+/**
+ * @see https://msdn.microsoft.com/en-us/ie/dn265046(v=vs.94)
+ * @const {!Object}
+ */
+Window.prototype.msCrypto;
 
 /**
  * @see http://msdn.microsoft.com/en-us/library/ms535864(VS.85).aspx
@@ -1019,7 +1019,8 @@ Element.prototype.componentFromPoint = function(iCoordX, iCoordY) {};
 
 
 /**
- * @type {boolean}
+ * TODO(tjgq): Make this string once existing usages have been migrated.
+ * @type {string|boolean}
  * @see http://msdn.microsoft.com/en-us/library/ms533690(VS.85).aspx
  */
 Element.prototype.contentEditable;
@@ -1067,6 +1068,7 @@ Element.prototype.hideFocus;
 Element.prototype.innerText;
 
 /**
+ * @type {boolean}
  * @see http://msdn.microsoft.com/en-us/library/ms537838(VS.85).aspx
  */
 Element.prototype.isContentEditable;
@@ -1117,6 +1119,7 @@ Element.prototype.onselectstart;
 
 /**
  * @type {string}
+ * @implicitCast
  * @see http://msdn.microsoft.com/en-us/library/aa752326(VS.85).aspx
  */
 Element.prototype.outerHTML;
@@ -1254,6 +1257,7 @@ Location.prototype.hostname;
 
 /**
  * @see http://msdn.microsoft.com/en-us/library/ms533867(VS.85).aspx
+ * @implicitCast
  * @type {string}
  */
 Location.prototype.href;
@@ -1290,7 +1294,7 @@ Location.prototype.search;
 
 /**
  * @see http://msdn.microsoft.com/en-us/library/ms536342(VS.85).aspx
- * @param {string} url
+ * @param {!TrustedURL|string} url
  * @return {undefined}
  */
 Location.prototype.assign = function(url) {};
@@ -1304,7 +1308,7 @@ Location.prototype.assign = function(url) {};
 Location.prototype.reload = function(opt_forceReload) {};
 
 /**
- * @param {string} url
+ * @param {!TrustedURL|string} url
  * @see http://msdn.microsoft.com/en-us/library/ms536712(VS.85).aspx
  * @return {undefined}
  */

@@ -52,13 +52,13 @@ import java.util.Map;
  * Local variables are declared on the function block, while parameters and optionally the function
  * name (if it bleeds, i.e. from a named function expression) are declared on the container scope.
  * This is required so that default parameter initializers can refer to names from outside the
- * function that could possibly be shadowed in the function block.  But these scopes are not fully
+ * function that could possibly be shadowed in the function block. But these scopes are not fully
  * independent of one another, since the language does not allow a top-level local variable to
  * shadow a parameter name - so in some situations these scopes must be treated as a single scope.
  *
  * @see NodeTraversal
  */
-abstract class AbstractScope<S extends AbstractScope<S, V>, V extends AbstractVar<S, V>>
+public abstract class AbstractScope<S extends AbstractScope<S, V>, V extends AbstractVar<S, V>>
     implements StaticScope, Serializable {
   private final Map<String, V> vars = new LinkedHashMap<>();
   private final Map<ImplicitVar, V> implicitVars = new EnumMap<>(ImplicitVar.class);
@@ -112,7 +112,7 @@ abstract class AbstractScope<S extends AbstractScope<S, V>, V extends AbstractVa
   }
 
   /** Walks up the tree to find the global scope. */
-  final S getGlobalScope() {
+  public final S getGlobalScope() {
     S result = thisScope();
     while (result.getParent() != null) {
       result = result.getParent();
@@ -356,7 +356,7 @@ abstract class AbstractScope<S extends AbstractScope<S, V>, V extends AbstractVa
    * declare a var inside function parameters, it would make even less sense to say that such
    * declarations would be "hoisted" somewhere else.
    */
-  final S getClosestHoistScope() {
+  public final S getClosestHoistScope() {
     S current = thisScope();
     while (current != null) {
       if (current.isHoistScope()) {
@@ -389,7 +389,7 @@ abstract class AbstractScope<S extends AbstractScope<S, V>, V extends AbstractVa
   }
 
   /** Performs simple validity checks on when constructing a child scope. */
-  void checkChildScope(S parent) {
+  final void checkChildScope(S parent) {
     checkNotNull(parent);
     checkArgument(NodeUtil.createsScope(rootNode), rootNode);
     checkArgument(
@@ -398,7 +398,7 @@ abstract class AbstractScope<S extends AbstractScope<S, V>, V extends AbstractVa
   }
 
   /** Performs simple validity checks on when constructing a root scope. */
-  void checkRootScope() {
+  final void checkRootScope() {
     // TODO(tbreisacher): Can we tighten this to just NodeUtil.createsScope?
     checkArgument(
         NodeUtil.createsScope(rootNode) || rootNode.isScript() || rootNode.isRoot(), rootNode);

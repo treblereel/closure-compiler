@@ -130,18 +130,27 @@ public abstract class JsFileLineParser {
     String line = null;
     lineNum = 0;
     boolean inMultilineComment = false;
+    boolean inJsDocComment = false;
 
     try {
       while (null != (line = lineBuffer.readLine())) {
         ++lineNum;
         try {
           String revisedLine = line;
+          String revisedJsDocCommentLine = "";
           if (inMultilineComment) {
             int endOfComment = revisedLine.indexOf("*/");
             if (endOfComment != -1) {
+              if (inJsDocComment) {
+                revisedJsDocCommentLine = revisedLine.substring(0, endOfComment + 2);
+                inJsDocComment = false;
+              }
               revisedLine = revisedLine.substring(endOfComment + 2);
               inMultilineComment = false;
             } else {
+              if (inJsDocComment) {
+                revisedJsDocCommentLine = line;
+              }
               revisedLine = "";
             }
           }
@@ -156,14 +165,33 @@ public abstract class JsFileLineParser {
                 revisedLine = revisedLine.substring(0, startOfLineComment);
                 break;
               } else if (startOfMultilineComment != -1) {
-                int endOfMultilineComment = revisedLine.indexOf("*/",
-                    startOfMultilineComment + 2);
+                // If comment is in a string (single or double quoted), don't parse as a comment.
+                if (isCommentQuoted(revisedLine, startOfMultilineComment, '\'')) {
+                  break;
+                }
+                if (isCommentQuoted(revisedLine, startOfMultilineComment, '"')) {
+                  break;
+                }
+                if (startOfMultilineComment == revisedLine.indexOf("/**")) {
+                  inJsDocComment = true;
+                }
+                int endOfMultilineComment = revisedLine.indexOf("*/", startOfMultilineComment + 2);
                 if (endOfMultilineComment == -1) {
-                  revisedLine = revisedLine.substring(
-                      0, startOfMultilineComment);
+                  if (inJsDocComment) {
+                    revisedJsDocCommentLine = revisedLine.substring(startOfMultilineComment);
+                  }
+                  revisedLine = revisedLine.substring(0, startOfMultilineComment);
                   inMultilineComment = true;
                   break;
                 } else {
+                  if (inJsDocComment) {
+                    String jsDocComment =
+                        revisedLine.substring(startOfMultilineComment, endOfMultilineComment + 2);
+                    if (!parseJsDocCommentLine(jsDocComment) && shortcutMode) {
+                      break;
+                    }
+                    inJsDocComment = false;
+                  }
                   revisedLine =
                       revisedLine.substring(0, startOfMultilineComment) +
                       revisedLine.substring(endOfMultilineComment + 2);
@@ -171,6 +199,12 @@ public abstract class JsFileLineParser {
               } else {
                 break;
               }
+            }
+          }
+
+          if (!revisedJsDocCommentLine.isEmpty()) {
+            if (!parseJsDocCommentLine(revisedJsDocCommentLine) && shortcutMode) {
+              break;
             }
           }
 
@@ -199,6 +233,42 @@ public abstract class JsFileLineParser {
     }
   }
 
+  private boolean isCommentQuoted(String line, int startOfMultilineComment, char quoteChar) {
+    int startQuoteIndex = line.indexOf(quoteChar);
+    // Loop in case there are multiple strings between start of line and start of the comment.
+    while (startQuoteIndex != -1 && startQuoteIndex < startOfMultilineComment) {
+      int closingQuoteIndex = line.indexOf(quoteChar, startQuoteIndex + 1);
+      if (closingQuoteIndex == -1) {
+        return false;
+      }
+      ;
+      // Skip escaped quotes
+      while (isEscaped(line, closingQuoteIndex)) {
+        closingQuoteIndex = line.indexOf(quoteChar, closingQuoteIndex + 1);
+        if (closingQuoteIndex == -1) {
+          return false;
+        }
+      }
+      if (closingQuoteIndex > startOfMultilineComment) {
+        return true;
+      }
+      startQuoteIndex = line.indexOf(quoteChar, closingQuoteIndex + 1);
+    }
+    return false;
+  }
+
+  private boolean isEscaped(String line, int closingQuoteIndex) {
+    int escapeCharCount = 0;
+    int index = closingQuoteIndex - 1;
+    while (line.charAt(index) == '\\') {
+      index--;
+      escapeCharCount++;
+    }
+    // Odd number of backslashes means one is actually escaping the quote. Otherwise they are
+    // literal backslashes which are being escaped by another backslash.
+    return escapeCharCount % 2 == 1;
+  }
+
   /**
    * Called for each line of the file being parsed.
    *
@@ -209,11 +279,20 @@ public abstract class JsFileLineParser {
   abstract boolean parseLine(String line) throws ParseException;
 
   /**
+   * Called for each JSDoc line of the file being parsed.
+   *
+   * @param line The JSDoc comment line to parse.
+   * @return true to keep going, false otherwise.
+   */
+  boolean parseJsDocCommentLine(String line) {
+    return true;
+  }
+
+  /**
    * Parses a JS string literal.
    *
    * @param jsStringLiteral The literal. Must look like "asdf" or 'asdf'
-   * @throws ParseException Thrown if there is a string literal that cannot be
-   *     parsed.
+   * @throws ParseException Thrown if there is a string literal that cannot be parsed.
    */
   String parseJsString(String jsStringLiteral) throws ParseException {
     valueMatcher.reset(jsStringLiteral);

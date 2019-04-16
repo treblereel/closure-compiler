@@ -18,22 +18,40 @@ package com.google.javascript.jscomp;
 import static com.google.javascript.jscomp.RewriteGoogJsImports.CANNOT_HAVE_MODULE_VAR_NAMED_GOOG;
 import static com.google.javascript.jscomp.RewriteGoogJsImports.GOOG_JS_IMPORT_MUST_BE_GOOG_STAR;
 import static com.google.javascript.jscomp.RewriteGoogJsImports.GOOG_JS_REEXPORTED;
+import static com.google.javascript.jscomp.deps.ModuleLoader.LOAD_WARNING;
 
 import com.google.javascript.jscomp.RewriteGoogJsImports.Mode;
+import com.google.javascript.jscomp.deps.ModuleLoader.ResolutionMode;
+import com.google.javascript.jscomp.modules.ModuleMapCreator;
+import com.google.javascript.rhino.Node;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@link RewriteGoogJsImports} that involve only linting and no rewriting.
- */
+/** Tests for {@link RewriteGoogJsImports} that involve only linting and no rewriting. */
 
+@RunWith(JUnit4.class)
 public final class CheckGoogJsImportTest extends CompilerTestCase {
   @Override
-  protected void setUp() throws Exception {
+  @Before
+  public void setUp() throws Exception {
     super.setUp();
+    ignoreWarnings(LOAD_WARNING);
   }
 
   @Override
   protected CompilerPass getProcessor(Compiler compiler) {
-    return new RewriteGoogJsImports(compiler, Mode.LINT_ONLY);
+    return (Node externs, Node root) -> {
+      GatherModuleMetadata gmm =
+          new GatherModuleMetadata(
+              compiler, /* processCommonJsModules= */ false, ResolutionMode.BROWSER);
+      gmm.process(externs, root);
+      ModuleMapCreator mmc = new ModuleMapCreator(compiler, compiler.getModuleMetadataMap());
+      mmc.process(externs, root);
+      new RewriteGoogJsImports(compiler, Mode.LINT_ONLY, compiler.getModuleMap())
+          .process(externs, root);
+    };
   }
 
   @Override
@@ -41,6 +59,7 @@ public final class CheckGoogJsImportTest extends CompilerTestCase {
     return 1;
   }
 
+  @Test
   public void testNoGoogJsImport() {
     testSame("var x");
     testSame("import {stuff} from './somethingelse.js';");
@@ -49,26 +68,31 @@ public final class CheckGoogJsImportTest extends CompilerTestCase {
     testSame("import {stuff} from './othergoog.js';");
   }
 
+  @Test
   public void testValidImports() {
     testSame("import * as goog from './closure/goog.js';");
     testSame("import * as goog from './goog.js';");
   }
 
+  @Test
   public void testImportStarMustBeNamedGoog() {
     testError("import * as closure from './goog.js';",
         GOOG_JS_IMPORT_MUST_BE_GOOG_STAR);
   }
 
+  @Test
   public void testImportSpecIsError() {
     testError("import {require} from './closure/goog.js';",
         GOOG_JS_IMPORT_MUST_BE_GOOG_STAR);
   }
 
+  @Test
   public void testImportDefaultIsError() {
     testError("import d from './closure/goog.js';",
         GOOG_JS_IMPORT_MUST_BE_GOOG_STAR);
   }
 
+  @Test
   public void testMixedImportIsError() {
     testError("testcode", "import d, * as goog from './closure/goog.js';",
         GOOG_JS_IMPORT_MUST_BE_GOOG_STAR);
@@ -76,11 +100,13 @@ public final class CheckGoogJsImportTest extends CompilerTestCase {
         GOOG_JS_IMPORT_MUST_BE_GOOG_STAR);
   }
 
+  @Test
   public void testPathOnlyImportIsError() {
     testError("import './closure/goog.js';",
         GOOG_JS_IMPORT_MUST_BE_GOOG_STAR);
   }
 
+  @Test
   public void testExportFromGoogJsIsError() {
     testError(
         "export {require} from './closure/goog.js';",
@@ -102,6 +128,7 @@ public final class CheckGoogJsImportTest extends CompilerTestCase {
         GOOG_JS_REEXPORTED);
   }
 
+  @Test
   public void testOtherModuleGoogVarIsError() {
     testError("export const goog = 0;", CANNOT_HAVE_MODULE_VAR_NAMED_GOOG);
     testError("export {}; const goog = 0;", CANNOT_HAVE_MODULE_VAR_NAMED_GOOG);

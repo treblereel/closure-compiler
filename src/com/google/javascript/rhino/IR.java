@@ -277,7 +277,7 @@ public class IR {
   }
 
   public static Node forNode(Node init, Node cond, Node incr, Node body) {
-    checkState(init.isVar() || mayBeExpressionOrEmpty(init));
+    checkState(init.isVar() || init.isLet() || init.isConst() || mayBeExpressionOrEmpty(init));
     checkState(mayBeExpressionOrEmpty(cond));
     checkState(mayBeExpressionOrEmpty(incr));
     checkState(body.isBlock());
@@ -424,6 +424,11 @@ public class IR {
     return new Node(Token.GETELEM, target, elem);
   }
 
+  public static Node delprop(Node target) {
+    checkState(mayBeExpression(target));
+    return new Node(Token.DELPROP, target);
+  }
+
   public static Node assign(Node target, Node expr) {
     checkState(target.isValidAssignmentTarget(), target);
     checkState(mayBeExpression(expr), expr);
@@ -536,14 +541,18 @@ public class IR {
   public static Node objectlit(Node ... propdefs) {
     Node objectlit = new Node(Token.OBJECTLIT);
     for (Node propdef : propdefs) {
-      checkState(
-          propdef.isStringKey()
-              || propdef.isMemberFunctionDef()
-              || propdef.isGetterDef()
-              || propdef.isSetterDef());
-      if (!propdef.isStringKey()) {
-        checkState(propdef.hasOneChild());
+      switch (propdef.getToken()) {
+        case STRING_KEY:
+        case MEMBER_FUNCTION_DEF:
+        case GETTER_DEF:
+        case SETTER_DEF:
+        case SPREAD:
+        case COMPUTED_PROP:
+          break;
+        default:
+          throw new IllegalStateException("Unexpected OBJECTLIT child: " + propdef);
       }
+
       objectlit.addChildToBack(propdef);
     }
     return objectlit;
@@ -572,8 +581,6 @@ public class IR {
     checkState(mayBeExpression(value), value);
     return new Node(Token.COMPUTED_PROP, key, value);
   }
-
-  // TODO(johnlenz): quoted props
 
   public static Node propdef(Node string, Node value) {
     checkState(string.isStringKey());
@@ -616,6 +623,12 @@ public class IR {
     Node stringKey = stringKey(s);
     stringKey.addChildToFront(value);
     return stringKey;
+  }
+
+  public static Node quotedStringKey(String s, Node value) {
+    Node k = stringKey(s, value);
+    k.putBooleanProp(Node.QUOTED_PROP, true);
+    return k;
   }
 
   public static Node rest(Node target) {
@@ -707,6 +720,7 @@ public class IR {
       case FOR:
       case FOR_IN:
       case FOR_OF:
+      case FOR_AWAIT_OF:
       case IF:
       case LABEL:
       case LET:
@@ -793,6 +807,7 @@ public class IR {
       case NE:
       case NEG:
       case NEW:
+      case NEW_TARGET:
       case NOT:
       case NUMBER:
       case NULL:

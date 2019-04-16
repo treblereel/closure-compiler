@@ -47,9 +47,12 @@ class OptimizeReturns implements OptimizeCalls.CallGraphCompilerPass, CompilerPa
   @Override
   @VisibleForTesting
   public void process(Node externs, Node root) {
-    ReferenceMap refMap = OptimizeCalls.buildPropAndGlobalNameReferenceMap(
-        compiler, externs, root);
-    process(externs, root, refMap);
+    OptimizeCalls.builder()
+        .setCompiler(compiler)
+        .setConsiderExterns(false)
+        .addPass(this)
+        .build()
+        .process(externs, root);
   }
 
   @Override
@@ -76,7 +79,7 @@ class OptimizeReturns implements OptimizeCalls.CallGraphCompilerPass, CompilerPa
 
     // Now modify the AST
     for (ArrayList<Node> refs : toOptimize) {
-      for (Node fn : ReferenceMap.getFunctionNodes(refs)) {
+      for (Node fn : ReferenceMap.getFunctionNodes(refs).values()) {
         rewriteReturns(fn);
       }
     }
@@ -217,6 +220,7 @@ class OptimizeReturns implements OptimizeCalls.CallGraphCompilerPass, CompilerPa
       case NULL:
       case TRUE:
       case FALSE:
+      case TEMPLATELIT_STRING:
         return true;
       case TEMPLATELIT_SUB:
       case CAST:

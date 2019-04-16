@@ -26,9 +26,9 @@ import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
-import junit.framework.TestCase;
+import org.junit.Before;
 
-public abstract class BaseReplaceScriptTestCase extends TestCase {
+public abstract class BaseReplaceScriptTestCase {
   protected static final Joiner LINE_JOINER = Joiner.on('\n');
 
   protected static final String CLOSURE_BASE =
@@ -56,9 +56,8 @@ public abstract class BaseReplaceScriptTestCase extends TestCase {
    */
   protected ImmutableList<SourceFile> testExterns = EXTVAR_EXTERNS;
 
-  @Override
-  protected void setUp() throws Exception {
-    super.setUp();
+  @Before
+  public void setUp() throws Exception {
     testExterns = EXTVAR_EXTERNS;
   }
 
@@ -102,7 +101,7 @@ public abstract class BaseReplaceScriptTestCase extends TestCase {
     Result result =
         runReplaceScript(getOptions(), sources, 0, 0, newSource, newSourceInd, true).getResult();
     assertNumWarningsAndErrors(result, 1, 0);
-    assertError(result.errors[0]).hasType(errorType);
+    assertError(result.errors.get(0)).hasType(errorType);
   }
 
   /**
@@ -174,10 +173,10 @@ public abstract class BaseReplaceScriptTestCase extends TestCase {
       assertThat(compiler.getErrors()).isEmpty();
       assertThat(result.success).isTrue();
     } else {
-      assertThat(compiler.getErrors()).hasLength(expectedCompileErrors);
+      assertThat(compiler.getErrors()).hasSize(expectedCompileErrors);
       assertThat(result.success).isFalse();
     }
-    assertThat(compiler.getWarnings()).hasLength(expectedCompileWarnings);
+    assertThat(compiler.getWarnings()).hasSize(expectedCompileWarnings);
     if (flushResults) {
       flushResults(compiler);
     }
@@ -202,14 +201,13 @@ public abstract class BaseReplaceScriptTestCase extends TestCase {
   }
 
   protected void assertNumWarningsAndErrors(Result result, int e, int w) {
-    assertThat(result.warnings).hasLength(w);
-    assertThat(result.errors).hasLength(e);
+    assertThat(result.warnings).hasSize(w);
+    assertThat(result.errors).hasSize(e);
     assertThat(result.success).isEqualTo(e == 0);
   }
 
   protected void assertErrorType(JSError e, DiagnosticType type, int lineNumber) {
     assertError(e).hasType(type);
-    assertEquals(e.lineNumber, lineNumber);
+    assertThat(lineNumber).isEqualTo(e.lineNumber);
   }
-
 }

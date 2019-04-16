@@ -19,7 +19,6 @@ package com.google.javascript.jscomp.gwt.client;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.javascript.jscomp.AbstractCommandLineRunner.createDefineOrTweakReplacements;
-import static com.google.javascript.jscomp.AbstractCommandLineRunner.createDependencyOptions;
 import static com.google.javascript.jscomp.AbstractCommandLineRunner.createJsModules;
 import static com.google.javascript.jscomp.AbstractCommandLineRunner.parseModuleWrappers;
 
@@ -39,6 +38,7 @@ import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
 import com.google.javascript.jscomp.CompilerOptions.TracerMode;
 import com.google.javascript.jscomp.DefaultExterns;
 import com.google.javascript.jscomp.DependencyOptions;
+import com.google.javascript.jscomp.DependencyOptions.DependencyMode;
 import com.google.javascript.jscomp.DiagnosticGroups;
 import com.google.javascript.jscomp.DiagnosticType;
 import com.google.javascript.jscomp.JSError;
@@ -64,6 +64,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import jsinterop.annotations.JsMethod;
 import jsinterop.annotations.JsPackage;
 import jsinterop.annotations.JsProperty;
@@ -73,6 +75,9 @@ import jsinterop.annotations.JsType;
  * Runner for the GWT-compiled JSCompiler.
  */
 public final class GwtRunner {
+  private static final Logger phaseLogger =
+      Logger.getLogger("com.google.javascript.jscomp.PhaseOptimizer");
+
   private static final CompilationLevel DEFAULT_COMPILATION_LEVEL =
       CompilationLevel.SIMPLE_OPTIMIZATIONS;
 
@@ -91,19 +96,23 @@ public final class GwtRunner {
     String[] chunkWrapper;
     String chunkOutputPathPrefix;
     String compilationLevel;
+    Object createSourceMap;
     boolean dartPass;
     boolean debug;
-    JsMap defines;
     String[] define;
     String dependencyMode;
     String[] entryPoint;
     String env;
     boolean exportLocalPropertyDefinitions;
-    String[] extraAnnotationNames;
+    Object[] externs;
+    String[] extraAnnotationName;
+    String[] forceInjectLibraries;
     String[] formatting;
     boolean generateExports;
     String[] hideWarningsFor;
+    boolean injectLibraries;
     String isolationMode;
+    String[] js;
     String[] jscompError;
     String[] jscompOff;
     String[] jscompWarning;
@@ -112,8 +121,9 @@ public final class GwtRunner {
     String languageIn;
     String languageOut;
     String moduleResolution;
-    boolean newTypeInf;
+    @Deprecated boolean newTypeInf;
     String outputWrapper;
+    String packageJsonEntryNames;
     boolean parseInlineSourceMaps;
     @Deprecated
     boolean polymerPass;
@@ -123,8 +133,10 @@ public final class GwtRunner {
     boolean processCommonJsModules;
     boolean renaming;
     String renamePrefixNamespace;
+    String renameVariablePrefix;
     boolean rewritePolyfills;
     boolean sourceMapIncludeContent;
+    boolean strictModeInput;
     String tracerMode;
     boolean useTypesForOptimization;
     String warningLevel;
@@ -132,8 +144,7 @@ public final class GwtRunner {
     // These flags do not match the Java compiler JAR.
     @Deprecated
     File[] jsCode;
-    File[] externs;
-    boolean createSourceMap;
+    JsMap defines;
   }
 
   /**
@@ -169,11 +180,14 @@ public final class GwtRunner {
     defaultFlags.entryPoint = null;
     defaultFlags.env = "BROWSER";
     defaultFlags.exportLocalPropertyDefinitions = false;
-    defaultFlags.extraAnnotationNames = null;
+    defaultFlags.extraAnnotationName = null;
     defaultFlags.externs = null;
+    defaultFlags.forceInjectLibraries = null;
     defaultFlags.formatting = null;
     defaultFlags.generateExports = false;
     defaultFlags.hideWarningsFor = null;
+    defaultFlags.injectLibraries = true;
+    defaultFlags.js = null;
     defaultFlags.jsCode = null;
     defaultFlags.jscompError = null;
     defaultFlags.jscompOff = null;
@@ -186,6 +200,7 @@ public final class GwtRunner {
     defaultFlags.newTypeInf = false;
     defaultFlags.isolationMode = "NONE";
     defaultFlags.outputWrapper = null;
+    defaultFlags.packageJsonEntryNames = null;
     defaultFlags.parseInlineSourceMaps = true;
     defaultFlags.polymerPass = false;
     defaultFlags.polymerVersion = null;
@@ -193,9 +208,11 @@ public final class GwtRunner {
     defaultFlags.processClosurePrimitives = true;
     defaultFlags.processCommonJsModules = false;
     defaultFlags.renamePrefixNamespace = null;
+    defaultFlags.renameVariablePrefix = null;
     defaultFlags.renaming = true;
     defaultFlags.rewritePolyfills = true;
     defaultFlags.sourceMapIncludeContent = false;
+    defaultFlags.strictModeInput = true;
     defaultFlags.tracerMode = "OFF";
     defaultFlags.warningLevel = "DEFAULT";
     defaultFlags.useTypesForOptimization = true;
@@ -268,6 +285,28 @@ public final class GwtRunner {
     }-*/;
   }
 
+  /**
+   * @param jsFilePaths Array of file paths. If running under NodeJS, they will be loaded via the
+   *     native node fs module.
+   * @return Array of File objects. If called without running under node, return null to indicate
+   *     failure.
+   */
+  private static native File[] getJsFiles(String[] jsFilePaths) /*-{
+    if (!(typeof process === 'object' && process.version)) {
+      return null;
+    }
+    var jsFiles = [];
+    for (var i = 0; i < jsFilePaths.length; i++) {
+      if (typeof process === 'object' && process.version) {
+        jsFiles.push({
+          path: jsFilePaths[i],
+          src: require('fs').readFileSync(jsFilePaths[i], 'utf8')
+        });
+      }
+    }
+    return jsFiles;
+  }-*/;
+
   @JsMethod(name = "keys", namespace = "Object")
   private static native String[] keys(Object o);
 
@@ -300,8 +339,8 @@ public final class GwtRunner {
         parseModuleWrappers(Arrays.asList(getStringArray(flags, "chunkWrapper")), chunks);
 
     for (JSModule c : chunks) {
-      if (flags.createSourceMap) {
-        compiler.getSourceMap().reset();
+      if (flags.createSourceMap != null && !flags.createSourceMap.equals(false)) {
+        compiler.resetAndIntitializeSourceMap();
       }
 
       File file = new File();
@@ -348,7 +387,7 @@ public final class GwtRunner {
 
       file.src = out.toString();
 
-      if (flags.createSourceMap) {
+      if (flags.createSourceMap != null && !flags.createSourceMap.equals(false)) {
         StringBuilder b = new StringBuilder();
         try {
           compiler.getSourceMap().appendTo(b, file.path);
@@ -398,7 +437,7 @@ public final class GwtRunner {
       }
       postfix = flags.outputWrapper.substring(pos + marker.length());
     }
-    if (flags.createSourceMap) {
+    if (flags.createSourceMap != null && !flags.createSourceMap.equals(false)) {
       StringBuilder b = new StringBuilder();
       try {
         compiler.getSourceMap().appendTo(b, flags.jsOutputFile);
@@ -479,8 +518,8 @@ public final class GwtRunner {
 
     options.setCodingConvention(new ClosureCodingConvention());
 
-    if (flags.extraAnnotationNames != null) {
-      options.setExtraAnnotationNames(Arrays.asList(flags.extraAnnotationNames));
+    if (flags.extraAnnotationName != null) {
+      options.setExtraAnnotationNames(Arrays.asList(flags.extraAnnotationName));
     }
 
     CompilationLevel level = DEFAULT_COMPILATION_LEVEL;
@@ -564,7 +603,14 @@ public final class GwtRunner {
 
     options.setDartPass(flags.dartPass);
 
+    options.setRenamePrefix(flags.renameVariablePrefix);
     options.setRenamePrefixNamespace(flags.renamePrefixNamespace);
+
+    options.setPreventLibraryInjection(!flags.injectLibraries);
+
+    if (flags.forceInjectLibraries != null) {
+      options.setForceLibraryInjection(Arrays.asList(flags.forceInjectLibraries));
+    }
 
     options.setPreserveTypeAnnotations(flags.preserveTypeAnnotations);
 
@@ -577,11 +623,16 @@ public final class GwtRunner {
     if (flags.tracerMode != null) {
       options.setTracerMode(TracerMode.valueOf(flags.tracerMode));
     }
+    options.setStrictModeInput(flags.strictModeInput);
 
     options.setSourceMapIncludeSourcesContent(flags.sourceMapIncludeContent);
 
     if (flags.moduleResolution != null) {
       options.setModuleResolutionMode(ResolutionMode.valueOf(flags.moduleResolution));
+    }
+
+    if (flags.packageJsonEntryNames != null) {
+      options.setPackageJsonEntryNames(Arrays.asList(flags.packageJsonEntryNames.split(",\\s*")));
     }
 
     if (!flags.renaming) {
@@ -615,21 +666,31 @@ public final class GwtRunner {
       options.setDefineReplacements(flags.defines.asMap());
     }
 
-    CompilerOptions.DependencyMode dependencyMode = CompilerOptions.DependencyMode.NONE;
+    DependencyMode dependencyMode = null;
     if (flags.dependencyMode != null) {
-      dependencyMode =
-          CompilerOptions.DependencyMode.valueOf(Ascii.toUpperCase(flags.dependencyMode));
+      dependencyMode = DependencyMode.valueOf(Ascii.toUpperCase(flags.dependencyMode));
     }
-    List<ModuleIdentifier> entryPoints = createEntryPoints(getStringArray(flags, "entryPoint"));
-    DependencyOptions dependencyOptions = createDependencyOptions(dependencyMode, entryPoints);
+    List<String> entryPoints = Arrays.asList(getStringArray(flags, "entryPoint"));
+    DependencyOptions dependencyOptions =
+        DependencyOptions.fromFlags(
+            dependencyMode,
+            entryPoints,
+            /* closureEntryPointFlag= */ ImmutableList.of(),
+            /* commonJsEntryModuleFlag= */ null,
+            /* manageClosureDependenciesFlag= */ false,
+            /* onlyClosureDependenciesFlag= */ false);
     if (dependencyOptions != null) {
       options.setDependencyOptions(dependencyOptions);
     }
 
     options.setTrustedStrings(true);
 
-    if (flags.createSourceMap) {
-      options.setSourceMapOutputPath("%output%.map");
+    if (flags.createSourceMap != null) {
+      if (flags.createSourceMap instanceof String) {
+        options.setSourceMapOutputPath((String) flags.createSourceMap);
+      } else if (!flags.createSourceMap.equals(false)) {
+        options.setSourceMapOutputPath("%output%.map");
+      }
     }
     options.setSourceMapIncludeSourcesContent(flags.sourceMapIncludeContent);
     options.setParseInlineSourceMaps(flags.parseInlineSourceMaps);
@@ -639,6 +700,29 @@ public final class GwtRunner {
 
     options.setModuleRoots(Arrays.asList(getStringArray(flags, "jsModuleRoot")));
   }
+
+  /**
+   * @param externs Array of strings or File[]. If running under NodeJS, an array of strings will be
+   *     treated as file paths and loaded via the native node fs module.
+   * @return Array of extern File objects. If an array of strings is passed without running under
+   *     node, return null to indicate failure.
+   */
+  private static native File[] fromExternsFlag(Object[] externs) /*-{
+    var externFiles = [];
+    for (var i = 0; i < externs.length; i++) {
+      if (externs[i].path || externs[i].src) {
+        externFiles.push(externs[i]);
+      } else if (typeof process === 'object' && process.version) {
+        externFiles.push({
+          path: externs[i],
+          src: require('fs').readFileSync(externs[i], 'utf8')
+        });
+      } else {
+        return null;
+      }
+    }
+    return externFiles;
+  }-*/;
 
   private static List<SourceFile> fromFileArray(File[] src, String unknownPrefix) {
     List<SourceFile> out = new ArrayList<>();
@@ -697,6 +781,10 @@ public final class GwtRunner {
   /** Public compiler call. Exposed in {@link #exportCompile}. */
   @JsMethod(namespace = "jscomp")
   public static ChunkOutput compile(Flags flags, File[] inputs) throws IOException {
+    // The PhaseOptimizer logs skipped pass warnings that interfere with capturing
+    // output and errors in the open source runners.
+    phaseLogger.setLevel(Level.OFF);
+
     String[] unhandled = updateFlags(flags, getDefaultFlags());
     if (unhandled.length > 0) {
       throw new RuntimeException("Unhandled flag: " + unhandled[0]);
@@ -734,12 +822,30 @@ public final class GwtRunner {
       }
     }
 
+    if (flags.js != null) {
+      File[] jsFiles = getJsFiles(getStringArray(flags, "js"));
+      if (jsFiles == null) {
+        throw new RuntimeException(
+            "Can only load files from the filesystem when running in NodeJS.");
+      } else {
+        jsCode.addAll(fromFileArray(jsFiles, "Input_"));
+      }
+    }
+
     Compiler compiler = new Compiler(new NodePrintStream());
     CompilerOptions options = new CompilerOptions();
     applyOptionsFromFlags(options, flags, compiler.getDiagnosticGroups());
     options.setInputSourceMaps(sourceMaps);
 
-    List<SourceFile> externs = fromFileArray(flags.externs, "Extern_");
+    List<SourceFile> externs = new ArrayList<>();
+    if (flags.externs != null) {
+      File[] externFiles = fromExternsFlag(getStringArray(flags, "externs"));
+      if (externFiles == null) {
+        throw new RuntimeException(
+            "Can only load files from the filesystem when running in NodeJS.");
+      }
+      externs = fromFileArray(externFiles, "Extern_");
+    }
     externs.addAll(createExterns(options.getEnvironment()));
 
     NodeErrorManager errorManager = new NodeErrorManager();

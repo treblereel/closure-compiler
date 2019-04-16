@@ -21,6 +21,8 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.base.Preconditions;
 import com.google.debugging.sourcemap.Util;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet.Feature;
 import com.google.javascript.rhino.JSDocInfo.Visibility;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
@@ -49,6 +51,7 @@ public class CodeGenerator {
   private final boolean trustedStrings;
   private final boolean quoteKeywordProperties;
   private final boolean useOriginalName;
+  private final FeatureSet outputFeatureSet;
   private final JSDocInfoPrinter jsDocInfoPrinter;
 
   private CodeGenerator(CodeConsumer consumer) {
@@ -59,6 +62,7 @@ public class CodeGenerator {
     preserveTypeAnnotations = false;
     quoteKeywordProperties = false;
     useOriginalName = false;
+    this.outputFeatureSet = FeatureSet.BARE_MINIMUM;
     this.jsDocInfoPrinter = new JSDocInfoPrinter(false);
   }
 
@@ -71,6 +75,7 @@ public class CodeGenerator {
     this.preserveTypeAnnotations = options.preserveTypeAnnotations;
     this.quoteKeywordProperties = options.shouldQuoteKeywordProperties();
     this.useOriginalName = options.getUseOriginalNamesInOutput();
+    this.outputFeatureSet = options.getOutputFeatureSet();
     this.jsDocInfoPrinter = new JSDocInfoPrinter(useOriginalName);
   }
 
@@ -184,9 +189,14 @@ public class CodeGenerator {
         cc.maybeInsertSpace();
         add("catch");
         cc.maybeInsertSpace();
-        add("(");
-        add(first);
-        add(")");
+
+        if (!first.isEmpty()) {
+          // optional catch binding
+          add("(");
+          add(first);
+          add(")");
+        }
+
         add(last);
         break;
 
@@ -292,9 +302,17 @@ public class CodeGenerator {
         break;
 
       case PARAM_LIST:
-        add("(");
-        addList(first);
-        add(")");
+        // If this is the list for a non-TypeScript arrow function with one simple name param.
+        if (n.getParent().isArrowFunction()
+            && n.hasOneChild()
+            && first.isName()
+            && !outputFeatureSet.has(Feature.TYPE_ANNOTATION)) {
+          add(first);
+        } else {
+          add("(");
+          addList(first);
+          add(")");
+        }
         break;
 
       case DEFAULT_VALUE:
@@ -463,6 +481,12 @@ public class CodeGenerator {
         add(n.getString());
         break;
 
+      case DYNAMIC_IMPORT:
+        add("import(");
+        addExpr(first, NodeUtil.precedence(type), context);
+        add(")");
+        break;
+
         // CLASS -> NAME,EXPR|EMPTY,BLOCK
       case CLASS:
         {
@@ -547,13 +571,13 @@ public class CodeGenerator {
             add("static ");
           }
 
+          if (n.isMemberFunctionDef() && n.getFirstChild().isAsyncFunction()) {
+            add("async ");
+          }
+
           if (!n.isMemberVariableDef() && n.getFirstChild().isGeneratorFunction()) {
             checkState(type == Token.MEMBER_FUNCTION_DEF, n);
             add("*");
-          }
-
-          if (n.isMemberFunctionDef() && n.getFirstChild().isAsyncFunction()) {
-            add("async ");
           }
 
           switch (type) {
@@ -692,6 +716,20 @@ public class CodeGenerator {
       case FOR_OF:
         Preconditions.checkState(childCount == 3, n);
         add("for");
+        cc.maybeInsertSpace();
+        add("(");
+        add(first);
+        cc.maybeInsertSpace();
+        add("of");
+        cc.maybeInsertSpace();
+        add(first.getNext());
+        add(")");
+        addNonEmptyStatement(last, getContextForNonEmptyExpression(context), false);
+        break;
+
+      case FOR_AWAIT_OF:
+        Preconditions.checkState(childCount == 3, n);
+        add("for await");
         cc.maybeInsertSpace();
         add("(");
         add(first);
@@ -1014,10 +1052,13 @@ public class CodeGenerator {
           add("get ");
         } else if (n.getBooleanProp(Node.COMPUTED_PROP_SETTER)) {
           add("set ");
-        } else if (last.getBooleanProp(Node.GENERATOR_FN)) {
-          add("*");
-        } else if (last.isAsyncFunction()) {
-          add("async");
+        } else {
+          if (last.isAsyncFunction()) {
+            add("async");
+          }
+          if (last.getBooleanProp(Node.GENERATOR_FN)) {
+            add("*");
+          }
         }
         add("[");
         add(first);
@@ -1109,19 +1150,17 @@ public class CodeGenerator {
         break;
 
       case TEMPLATELIT:
-        add("`");
+        cc.beginTemplateLit();
         for (Node c = first; c != null; c = c.getNext()) {
-          if (c.isString()) {
-            add(strEscape(c.getString(), "\"", "'", "\\`", "\\\\", false, false));
+          if (c.isTemplateLitString()) {
+            add(escapeUnrecognizedCharacters(c.getRawString()));
           } else {
-            // Can't use add() since isWordChar('$') == true and cc would add
-            // an extra space.
-            cc.append("${");
+            cc.beginTemplateLitSub();
             add(c.getFirstChild(), Context.START_OF_EXPR);
-            add("}");
+            cc.endTemplateLitSub();
           }
         }
-        add("`");
+        cc.endTemplateLit();
         break;
 
         // Type Declaration ASTs.
@@ -1742,12 +1781,14 @@ public class CodeGenerator {
       singlequote = "\'";
     }
 
-    return quote + strEscape(s, doublequote, singlequote, "`", "\\\\", useSlashV, false) + quote;
+    return quote
+        + strEscape(s, doublequote, singlequote, "`", "\\\\", "$", useSlashV, false)
+        + quote;
   }
 
   /** Escapes regular expression */
   String regexpEscape(String s) {
-    return '/' + strEscape(s, "\"", "'", "`", "\\", false, true) + '/';
+    return '/' + strEscape(s, "\"", "'", "`", "\\", "$", false, true) + '/';
   }
 
   /** Helper to escape JavaScript string as well as regular expression */
@@ -1757,6 +1798,7 @@ public class CodeGenerator {
       String singlequoteEscape,
       String backtickEscape,
       String backslashEscape,
+      String dollarEscape,
       boolean useSlashV,
       boolean isRegexp) {
     StringBuilder sb = new StringBuilder(s.length() + 2);
@@ -1780,11 +1822,8 @@ public class CodeGenerator {
         case '\\': sb.append(backslashEscape); break;
         case '\"': sb.append(doublequoteEscape); break;
         case '\'': sb.append(singlequoteEscape); break;
+        case '$': sb.append(dollarEscape); break;
         case '`': sb.append(backtickEscape); break;
-
-        // From LineTerminators (ES5 Section 7.3, Table 3)
-        case '\u2028': sb.append("\\u2028"); break;
-        case '\u2029': sb.append("\\u2029"); break;
 
         case '=':
           // '=' is a syntactically significant regexp character.
@@ -1843,6 +1882,68 @@ public class CodeGenerator {
           } else {
             sb.append(c);
           }
+          break;
+
+        default:
+          if (isRegexp
+              || !outputFeatureSet.contains(Feature.UNESCAPED_UNICODE_LINE_OR_PARAGRAPH_SEP)) {
+            // In 2019 these characters (line and paragraph separators) are valid in strings but
+            // not regular expressions.
+            // https://github.com/tc39/proposal-json-superset
+            if (c == '\u2028') {
+              sb.append("\\u2028");
+              break;
+            }
+            if (c == '\u2029') {
+              sb.append("\\u2029");
+              break;
+            }
+          }
+
+          if ((outputCharsetEncoder != null && outputCharsetEncoder.canEncode(c))
+              || (c > 0x1f && c < 0x7f)) {
+            // If we're given an outputCharsetEncoder, then check if the character can be
+            // represented in this character set. If no charsetEncoder provided - pass straight
+            // Latin characters through, and escape the rest. Doing the explicit character check is
+            // measurably faster than using the CharsetEncoder.
+            sb.append(c);
+          } else {
+            // Other characters can be misinterpreted by some JS parsers,
+            // or perhaps mangled by proxies along the way,
+            // so we play it safe and Unicode escape them.
+            Util.appendHexJavaScriptRepresentation(sb, c);
+          }
+      }
+    }
+    return sb.toString();
+  }
+
+  /**
+   * Helper to escape the characters that might be misinterpreted
+   *
+   * @param s the string to modify
+   * @return the string with unrecognizable characters escaped.
+   */
+  private String escapeUnrecognizedCharacters(String s) {
+    // TODO(yitingwang) Move this method to a suitable place
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      switch (c) {
+          // From the SingleEscapeCharacter grammar production.
+        case '\b':
+        case '\f':
+        case '\n':
+        case '\r':
+        case '\t':
+        case '\\':
+        case '\"':
+        case '\'':
+        case '$':
+        case '`':
+        case '\u2028':
+        case '\u2029':
+          sb.append(c);
           break;
         default:
           if ((outputCharsetEncoder != null && outputCharsetEncoder.canEncode(c))

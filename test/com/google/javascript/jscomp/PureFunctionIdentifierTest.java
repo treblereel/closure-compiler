@@ -21,9 +21,15 @@ import static com.google.common.truth.Truth.assertThat;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.javascript.jscomp.NodeTraversal.AbstractPostOrderCallback;
+import com.google.javascript.jscomp.testing.JSCompCorrespondences;
 import com.google.javascript.rhino.Node;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 /**
  * Tests for {@link PureFunctionIdentifier}
@@ -31,9 +37,10 @@ import java.util.List;
  * @author johnlenz@google.com (John Lenz)
  */
 
+@RunWith(JUnit4.class)
 public final class PureFunctionIdentifierTest extends CompilerTestCase {
-  List<String> noSideEffectCalls;
-  List<String> localResultCalls;
+  List<Node> noSideEffectCalls;
+  List<Node> localResultCalls;
 
   boolean regExpHaveSideEffects = true;
 
@@ -188,13 +195,18 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
   }
 
   @Override
-  protected void setUp() throws Exception {
+  @Before
+  public void setUp() throws Exception {
     super.setUp();
+
+    enableNormalize();
+    enableGatherExternProperties();
     enableTypeCheck();
   }
 
   @Override
-  protected void tearDown() throws Exception {
+  @After
+  public void tearDown() throws Exception {
     super.tearDown();
     regExpHaveSideEffects = true;
   }
@@ -217,16 +229,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
       localResultCalls = new ArrayList<>();
       compiler.setHasRegExpGlobalReferences(regExpHaveSideEffects);
       compiler.getOptions().setUseTypesForLocalOptimization(true);
-      NameBasedDefinitionProvider defFinder = new NameBasedDefinitionProvider(compiler, true);
-      defFinder.process(externs, root);
 
-      PureFunctionIdentifier pureFunctionIdentifier =
-          new PureFunctionIdentifier(compiler, defFinder);
-      pureFunctionIdentifier.process(externs, root);
-
-      // Ensure that debug report computation doesn't crash.
-      pureFunctionIdentifier.getDebugReport();
-
+      new PureFunctionIdentifier.Driver(compiler).process(externs, root);
       NodeTraversal.traverse(compiler, externs, this);
       NodeTraversal.traverse(compiler, root, this);
     }
@@ -235,41 +239,21 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     public void visit(NodeTraversal t, Node n, Node parent) {
       if (n.isNew()) {
         if (!NodeUtil.constructorCallHasSideEffects(n)) {
-          noSideEffectCalls.add(generateNameString(n.getFirstChild()));
+          noSideEffectCalls.add(n.getFirstChild());
         }
-      } else if (n.isCall()) {
+      } else if (NodeUtil.isInvocation(n)) {
         if (!NodeUtil.functionCallHasSideEffects(n, compiler)) {
-          noSideEffectCalls.add(generateNameString(n.getFirstChild()));
+          noSideEffectCalls.add(n.getFirstChild());
         }
         if (NodeUtil.callHasLocalResult(n)) {
-          localResultCalls.add(generateNameString(n.getFirstChild()));
+          localResultCalls.add(n.getFirstChild());
         }
-      }
-    }
-
-    private String generateNameString(Node node) {
-      if (node.isOr()) {
-        return "(" + generateNameString(node.getFirstChild())
-            + " || " + generateNameString(node.getLastChild()) + ")";
-      } else if (node.isHook()) {
-        return "(" + generateNameString(node.getSecondChild())
-            + " : " + generateNameString(node.getLastChild()) + ")";
-      } else {
-        String result = node.getQualifiedName();
-        if (result == null) {
-          if (node.isFunction()) {
-            result = node.toString(false, false, false).trim();
-          } else {
-            result = node.getFirstChild().toString(false, false, false);
-            result += " " + node.getLastChild().toString(false, false, false);
-          }
-        }
-        return result;
       }
     }
   }
 
-  public void testIssue303() throws Exception {
+  @Test
+  public void testIssue303() {
     String source = lines(
         "/** @constructor */ function F() {",
         "  var self = this;",
@@ -285,7 +269,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testIssue303b() throws Exception {
+  @Test
+  public void testIssue303b() {
     String source = lines(
         "/** @constructor */ function F() {",
         "  var self = this;",
@@ -303,32 +288,39 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testAnnotationInExterns_new1() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new1() {
     assertPureCallsMarked("externSENone()", ImmutableList.of("externSENone"));
   }
 
-  public void testAnnotationInExterns_new2() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new2() {
     assertNoPureCalls("externSEThis()");
   }
 
-  public void testAnnotationInExterns_new3() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new3() {
     assertPureCallsMarked("new externObjSEThis()", ImmutableList.of("externObjSEThis"));
   }
 
-  public void testAnnotationInExterns_new4() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new4() {
     // The entire expression containing "externObjSEThisMethod" is considered
     // side-effect free in this context.
 
-    assertPureCallsMarked("new externObjSEThis().externObjSEThisMethod('')",
-        ImmutableList.of("externObjSEThis", "NEW STRING externObjSEThisMethod"));
+    assertPureCallsMarked(
+        "new externObjSEThis().externObjSEThisMethod('')",
+        ImmutableList.of("externObjSEThis", "new externObjSEThis().externObjSEThisMethod"));
   }
 
-  public void testAnnotationInExterns_new5() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new5() {
     assertPureCallsMarked(
         "function f() { new externObjSEThis() }; f();", ImmutableList.of("externObjSEThis", "f"));
   }
 
-  public void testAnnotationInExterns_new6() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new6() {
     // While "externObjSEThisMethod" has modifies "this"
     // it does not have global side-effects with "this" is
     // a known local value.
@@ -342,11 +334,11 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         "f();"
     );
     assertPureCallsMarked(
-        source,
-        ImmutableList.of("externObjSEThis", "NEW STRING externObjSEThisMethod"));
+        source, ImmutableList.of("externObjSEThis", "new externObjSEThis().externObjSEThisMethod"));
   }
 
-  public void testAnnotationInExterns_new7() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new7() {
     // While "externObjSEThisMethod" has modifies "this"
     // it does not have global side-effects with "this" is
     // a known local value.
@@ -360,7 +352,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("externObjSEThis"));
   }
 
-  public void testAnnotationInExterns_new8() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new8() {
     // "externObjSEThisMethod" modifies "this", the 'this'
     // is not a known local value, so it must be assumed it is to
     // have global side-effects.
@@ -373,7 +366,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("externObjSEThis"));
   }
 
-  public void testAnnotationInExterns_new9() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new9() {
     // "externObjSEThisMethod" modifies "this", the 'this'
     // is not a known local value, so it must be assumed it is to
     // have global side-effects.  All possible values of "x" are considered
@@ -388,54 +382,66 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("externObjSEThis"));
   }
 
-  public void testAnnotationInExterns_new10() throws Exception {
+  @Test
+  public void testAnnotationInExterns_new10() {
     String source = lines(
         "function f() {",
         "  new externObjSEThis().externObjSEThisMethod2('') ",
         "};",
         "f();"
     );
-    assertPureCallsMarked(source,
-        ImmutableList.of("externObjSEThis", "NEW STRING externObjSEThisMethod2", "f"));
+    assertPureCallsMarked(
+        source,
+        ImmutableList.of("externObjSEThis", "new externObjSEThis().externObjSEThisMethod2", "f"));
   }
 
-  public void testAnnotationInExterns1() throws Exception {
+  @Test
+  public void testAnnotationInExterns1() {
     assertNoPureCalls("externSef1()");
   }
 
-  public void testAnnotationInExterns2() throws Exception {
+  @Test
+  public void testAnnotationInExterns2() {
     assertNoPureCalls("externSef2()");
   }
 
-  public void testAnnotationInExterns3() throws Exception {
+  @Test
+  public void testAnnotationInExterns3() {
     assertPureCallsMarked("externNsef1()", ImmutableList.of("externNsef1"));
   }
 
-  public void testAnnotationInExterns4() throws Exception {
+  @Test
+  public void testAnnotationInExterns4() {
     assertPureCallsMarked("externNsef2()", ImmutableList.of("externNsef2"));
   }
 
-  public void testAnnotationInExterns5() throws Exception {
+  @Test
+  public void testAnnotationInExterns5() {
     assertPureCallsMarked("externNsef3()", ImmutableList.of("externNsef3"));
   }
 
-  public void testNamespaceAnnotationInExterns1() throws Exception {
+  @Test
+  public void testNamespaceAnnotationInExterns1() {
     assertNoPureCalls("externObj.sef1()");
   }
 
-  public void testNamespaceAnnotationInExterns2() throws Exception {
+  @Test
+  public void testNamespaceAnnotationInExterns2() {
     assertPureCallsMarked("externObj.nsef1()", ImmutableList.of("externObj.nsef1"));
   }
 
-  public void testNamespaceAnnotationInExterns3() throws Exception {
+  @Test
+  public void testNamespaceAnnotationInExterns3() {
     assertPureCallsMarked("externObj.nsef2()", ImmutableList.of("externObj.nsef2"));
   }
 
-  public void testNamespaceAnnotationInExterns4() throws Exception {
+  @Test
+  public void testNamespaceAnnotationInExterns4() {
     assertNoPureCalls("externObj.partialFn()");
   }
 
-  public void testNamespaceAnnotationInExterns5() throws Exception {
+  @Test
+  public void testNamespaceAnnotationInExterns5() {
     // Test that adding a second definition for a partially defined
     // function doesn't make us think that the function has no side
     // effects.
@@ -448,61 +454,71 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(templateSrc.replace("<fnName>", "partialFn"));
   }
 
-  public void testNamespaceAnnotationInExterns6() throws Exception {
+  @Test
+  public void testNamespaceAnnotationInExterns6() {
     assertNoPureCalls("externObj.partialSharedFn()");
   }
 
-  public void testConstructorAnnotationInExterns1() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns1() {
     assertNoPureCalls("new externSefConstructor()");
   }
 
-  public void testConstructorAnnotationInExterns2() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns2() {
     String source = lines(
         "var a = new externSefConstructor();",
         "a.sefFnOfSefObj()");
     assertNoPureCalls(source);
   }
 
-  public void testConstructorAnnotationInExterns3() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns3() {
     String source = lines(
         "var a = new externSefConstructor();",
         "a.nsefFnOfSefObj()");
     assertPureCallsMarked(source, ImmutableList.of("a.nsefFnOfSefObj"));
   }
 
-  public void testConstructorAnnotationInExterns4() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns4() {
     String source = lines(
         "var a = new externSefConstructor();",
         "a.externShared()");
     assertNoPureCalls(source);
   }
 
-  public void testConstructorAnnotationInExterns5() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns5() {
     assertPureCallsMarked("new externNsefConstructor()", ImmutableList.of("externNsefConstructor"));
   }
 
-  public void testConstructorAnnotationInExterns6() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns6() {
     String source = lines(
         "var a = new externNsefConstructor();",
         "a.sefFnOfNsefObj()");
     assertPureCallsMarked(source, ImmutableList.of("externNsefConstructor"));
   }
 
-  public void testConstructorAnnotationInExterns7() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns7() {
     String source = lines(
         "var a = new externNsefConstructor();",
         "a.nsefFnOfNsefObj()");
     assertPureCallsMarked(source, ImmutableList.of("externNsefConstructor", "a.nsefFnOfNsefObj"));
   }
 
-  public void testConstructorAnnotationInExterns8() throws Exception {
+  @Test
+  public void testConstructorAnnotationInExterns8() {
     String source = lines(
         "var a = new externNsefConstructor();",
         "a.externShared()");
     assertPureCallsMarked(source, ImmutableList.of("externNsefConstructor"));
   }
 
-  public void testSharedFunctionName1() throws Exception {
+  @Test
+  public void testSharedFunctionName1() {
     String source = lines(
         "if (true) {",
         "  a = new externNsefConstructor()",
@@ -513,7 +529,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("externNsefConstructor"));
   }
 
-  public void testSharedFunctionName2() throws Exception {
+  @Test
+  public void testSharedFunctionName2() {
     // Implementation for both externNsefConstructor and externNsefConstructor2
     // have no side effects.
     boolean broken = true;
@@ -543,26 +560,40 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     }
   }
 
-  public void testAnnotationInExternStubs1() throws Exception {
-    assertPureCallsMarked("o.propWithStubBefore('a');",
-        ImmutableList.of("o.propWithStubBefore"));
+  @Test
+  public void testAnnotationInExternStubs1() {
+    // In the case where a property is defined first as a stub and then with a FUNCTION:
+    // we have to make a conservative assumption about the behaviour of the extern, since the stub
+    // carried no information.
+    assertNoPureCalls("o.propWithStubBefore('a');");
   }
 
-  public void testAnnotationInExternStubs1b() throws Exception {
-    assertPureCallsMarked("o.propWithStubBeforeWithJSDoc('a');",
-        ImmutableList.of("o.propWithStubBeforeWithJSDoc"));
+  @Test
+  public void testAnnotationInExternStubs1b() {
+    // In the case where a property is defined first as a stub and then with a FUNCTION:
+    // we have to make a conservative assumption about the behaviour of the extern, since the stub
+    // carried no information.
+    assertNoPureCalls("o.propWithStubBeforeWithJSDoc('a');");
   }
 
-  public void testAnnotationInExternStubs2() throws Exception {
-    assertPureCallsMarked("o.propWithStubAfter('a');",
-        ImmutableList.of("o.propWithStubAfter"));
+  @Test
+  public void testAnnotationInExternStubs2() {
+    // In the case where a property is defined first with a FUNCTION and then as a stub:
+    // we have to make a conservative assumption about the behaviour of the extern, since the stub
+    // carried no information.
+    assertNoPureCalls("o.propWithStubAfter('a');");
   }
 
-  public void testAnnotationInExternStubs3() throws Exception {
+  @Test
+  public void testAnnotationInExternStubs3() {
+    // In the case where a property is defined first with a FUNCTION and then as a stub:
+    // we have to make a conservative assumption about the behaviour of the extern, since the stub
+    // carried no information.
     assertNoPureCalls("propWithAnnotatedStubAfter('a');");
   }
 
-  public void testAnnotationInExternStubs4() throws Exception {
+  @Test
+  public void testAnnotationInExternStubs4() {
     // An externs definition with a stub that differs from the declaration.
     // Verify our assumption is valid about this.
     String externs = lines(
@@ -585,7 +616,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertThat(noSideEffectCalls).isEmpty();
   }
 
-  public void testAnnotationInExternStubs5() throws Exception {
+  @Test
+  public void testAnnotationInExternStubs5() {
     // An externs definition with a stub that differs from the declaration.
     // Verify our assumption is valid about this.
     String externs = lines(
@@ -612,7 +644,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertThat(noSideEffectCalls).isEmpty();
   }
 
-  public void testNoSideEffectsSimple() throws Exception {
+  @Test
+  public void testNoSideEffectsSimple() {
     String prefix = "function f(){";
     String suffix = "} f()";
     List<String> expected = ImmutableList.of("f");
@@ -648,79 +681,90 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         + prefix + "return externObj.foo" + suffix, expected);
   }
 
-  public void testNoSideEffectsSimple2() throws Exception {
+  @Test
+  public void testNoSideEffectsSimple2() {
     regExpHaveSideEffects = false;
     String source = lines(
         "function f() {",
         "  return ''.replace(/xyz/g, '');",
         "}",
         "f()");
-    assertPureCallsMarked(source, ImmutableList.of("STRING  STRING replace", "f"));
+    assertPureCallsMarked(source, ImmutableList.of("''.replace", "f"));
   }
 
-  public void testNoSideEffectsSimple3() throws Exception {
+  @Test
+  public void testNoSideEffectsSimple3() {
     regExpHaveSideEffects = false;
-    String source = lines(
-        "function f(/** string */ str) {",
-        "  return str.replace(/xyz/g, '');",
-        "}",
-        "f('')");
-    assertPureCallsMarked(source, ImmutableList.of("str.replace", "f"));
+    String source =
+        lines(
+            "function f(/** string */ x) {", //
+            "  return x.replace(/xyz/g, '');",
+            "}",
+            "f('')");
+    assertPureCallsMarked(source, ImmutableList.of("x.replace", "f"));
   }
 
-  public void testResultLocalitySimple() throws Exception {
+  @Test
+  public void testResultLocalitySimple() {
     String prefix = "var g; function f(){";
     String suffix = "} f()";
-    final List<String> fReturnsLocal = ImmutableList.of("f");
-    final List<String> fReturnsNonLocal = ImmutableList.<String>of();
+    final List<String> fReturnsUnescaped = ImmutableList.of("f");
+    final List<String> fReturnsEscaped = ImmutableList.of();
 
     // no return
-    checkLocalityOfMarkedCalls(prefix + "" + suffix, fReturnsLocal);
+    assertUnescapedReturnCallsMarked(prefix + "" + suffix, fReturnsUnescaped);
     // simple return expressions
-    checkLocalityOfMarkedCalls(prefix + "return 1" + suffix, fReturnsLocal);
-    checkLocalityOfMarkedCalls(prefix + "return 1 + 2" + suffix, fReturnsLocal);
+    assertUnescapedReturnCallsMarked(prefix + "return 1" + suffix, fReturnsUnescaped);
+    assertUnescapedReturnCallsMarked(prefix + "return 1 + 2" + suffix, fReturnsUnescaped);
 
     // global result
-    checkLocalityOfMarkedCalls(prefix + "return g" + suffix, fReturnsNonLocal);
+    assertUnescapedReturnCallsMarked(prefix + "return g" + suffix, fReturnsEscaped);
 
     // multiple returns
-    checkLocalityOfMarkedCalls(prefix + "return 1; return 2" + suffix, fReturnsLocal);
-    checkLocalityOfMarkedCalls(prefix + "return 1; return g" + suffix, fReturnsNonLocal);
+    assertUnescapedReturnCallsMarked(prefix + "return 1; return 2" + suffix, fReturnsUnescaped);
+    assertUnescapedReturnCallsMarked(prefix + "return 1; return g" + suffix, fReturnsEscaped);
 
     // local var, not yet. Note we do not handle locals properly here.
-    checkLocalityOfMarkedCalls(prefix + "var a = 1; return a" + suffix, fReturnsNonLocal);
+    assertUnescapedReturnCallsMarked(prefix + "var a = 1; return a" + suffix, fReturnsEscaped);
 
     // mutate local var, not yet. Note we do not handle locals properly here.
-    checkLocalityOfMarkedCalls(prefix + "var a = 1; a = 2; return a" + suffix, fReturnsNonLocal);
-    checkLocalityOfMarkedCalls(prefix + "var a = 1; a = 2; return a + 1" + suffix, fReturnsLocal);
+    assertUnescapedReturnCallsMarked(
+        prefix + "var a = 1; a = 2; return a" + suffix, fReturnsEscaped);
+    assertUnescapedReturnCallsMarked(
+        prefix + "var a = 1; a = 2; return a + 1" + suffix, fReturnsUnescaped);
 
     // read from obj literal
-    checkLocalityOfMarkedCalls(prefix + "return {foo : 1}.foo" + suffix, fReturnsNonLocal);
-    checkLocalityOfMarkedCalls(
-        prefix + "var a = {foo : 1}; return a.foo" + suffix, fReturnsNonLocal);
+    assertUnescapedReturnCallsMarked(prefix + "return {foo : 1}.foo" + suffix, fReturnsEscaped);
+    assertUnescapedReturnCallsMarked(
+        prefix + "var a = {foo : 1}; return a.foo" + suffix, fReturnsEscaped);
 
     // read from extern
-    checkLocalityOfMarkedCalls(prefix + "return externObj" + suffix, ImmutableList.<String>of());
-    checkLocalityOfMarkedCalls(
+    assertUnescapedReturnCallsMarked(prefix + "return externObj" + suffix, ImmutableList.of());
+    assertUnescapedReturnCallsMarked(
         "function inner(x) { x.foo = 3; }" /* to suppress missing property */
-        + prefix + "return externObj.foo" + suffix, ImmutableList.<String>of());
+            + prefix
+            + "return externObj.foo"
+            + suffix,
+        ImmutableList.of());
   }
 
+  @Test
   public void testReturnLocalityTaintObjectLiteralWithGlobal() {
     // return empty object literal.  This is completely local
     String source = lines(
         "function f() { return {} }",
         "f();"
     );
-    checkLocalityOfMarkedCalls(source, ImmutableList.of("f"));
+    assertUnescapedReturnCallsMarked(source, ImmutableList.of("f"));
     // return obj literal with global property is still local.
     source = lines(
         "var global = new Object();",
         "function f() { return {'asdf': global} }",
         "f();");
-    checkLocalityOfMarkedCalls(source, ImmutableList.<String>of("f"));
+    assertUnescapedReturnCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testReturnLocalityTaintArrayLiteralWithGlobal() {
     String source =
         lines(
@@ -728,30 +772,33 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
             "f();",
             "function g() { return [1, {}]; }",
             "g();");
-    checkLocalityOfMarkedCalls(source, ImmutableList.of("f", "g"));
+    assertUnescapedReturnCallsMarked(source, ImmutableList.of("f", "g"));
     // return array literal with global value is still a local value.
     source =
         lines(
             "var global = new Object();",
             "function f() { return [2 ,global]; }",
             "f();");
-    checkLocalityOfMarkedCalls(source, ImmutableList.<String>of("f"));
+    assertUnescapedReturnCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testReturnLocalityMultipleDefinitionsSameName() {
     String source = lines(
             "var global = new Object();",
             "A.func = function() {return global}", // return global (taintsReturn)
             "B.func = function() {return 1; }", // returns local
             "C.func();");
-    checkLocalityOfMarkedCalls(source, ImmutableList.<String>of());
+    assertUnescapedReturnCallsMarked(source, ImmutableList.of());
   }
 
-  public void testExternCalls() throws Exception {
+  @Test
+  public void testExternCalls() {
     testExternCallsForTypeInferenceMode(/* typeChecked= */ true);
   }
 
-  public void testExternCallsNoTypeChecking() throws Exception {
+  @Test
+  public void testExternCallsNoTypeChecking() {
     testExternCallsForTypeInferenceMode(/* typeChecked= */ false);
   }
 
@@ -768,27 +815,30 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
                      ImmutableList.of("externNsef1", "f"));
     assertPureCallsMarked(prefix + "externObj.nsef1()" + suffix,
                      ImmutableList.of("externObj.nsef1", "f"));
-    checkLocalityOfMarkedCalls("externNsef1(); externObj.nsef1()", ImmutableList.of());
+    assertUnescapedReturnCallsMarked("externNsef1(); externObj.nsef1()", ImmutableList.of());
 
     assertNoPureCalls(prefix + "externSef1()" + suffix);
     assertNoPureCalls(prefix + "externObj.sef1()" + suffix);
   }
 
-  public void testApply() throws Exception {
+  @Test
+  public void testApply() {
     String source = lines(
         "function f() {return 42}",
         "f.apply(null)");
     assertPureCallsMarked(source, ImmutableList.of("f.apply"));
   }
 
-  public void testCall() throws Exception {
+  @Test
+  public void testCall() {
     String source = lines(
         "function f() {return 42}",
         "f.call(null)");
     assertPureCallsMarked(source, ImmutableList.of("f.call"));
   }
 
-  public void testApplyToUnknownDefinition() throws Exception {
+  @Test
+  public void testApplyToUnknownDefinition() {
     String source = lines(
         "var dict = {'func': function() {}};",
         "function f() { var s = dict['func'];}",
@@ -823,7 +873,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testInference1() throws Exception {
+  @Test
+  public void testInference1() {
     String source = lines(
         "function f() {return g()}",
         "function g() {return 42}",
@@ -832,7 +883,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("g", "f"));
   }
 
-  public void testInference2() throws Exception {
+  @Test
+  public void testInference2() {
     String source = lines(
         "var a = 1;",
         "function f() {g()}",
@@ -842,7 +894,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testInference3() throws Exception {
+  @Test
+  public void testInference3() {
     String source = lines(
         "var f = function() {return g()};",
         "var g = function() {return 42};",
@@ -851,7 +904,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("g", "f"));
   }
 
-  public void testInference4() throws Exception {
+  @Test
+  public void testInference4() {
     String source = lines(
         "var a = 1; var f = function() {g()};",
         "var g = function() {a=2};",
@@ -860,7 +914,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testInference5() throws Exception {
+  @Test
+  public void testInference5() {
     String source = lines(
         "goog.f = function() {return goog.g()};",
         "goog.g = function() {return 42};",
@@ -869,7 +924,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("goog.g", "goog.f"));
   }
 
-  public void testInference6() throws Exception {
+  @Test
+  public void testInference6() {
     String source = lines(
         "var a = 1;",
         "goog.f = function() {goog.g()};",
@@ -879,7 +935,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testLocalizedSideEffects1() throws Exception {
+  @Test
+  public void testLocalizedSideEffects1() {
     // Returning a function that contains a modification of a local
     // is not a global side-effect.
     String source = lines(
@@ -891,7 +948,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
-  public void testLocalizedSideEffects2() throws Exception {
+  @Test
+  public void testLocalizedSideEffects2() {
     // Calling a function that contains a modification of a local
     // is a global side-effect (the value has escaped).
     String source = lines(
@@ -903,7 +961,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testLocalizedSideEffects3() throws Exception {
+  @Test
+  public void testLocalizedSideEffects3() {
     // A local that might be assigned a global value and whose properties
     // are modified must be considered a global side-effect.
     String source = lines(
@@ -914,7 +973,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testLocalizedSideEffects4() throws Exception {
+  @Test
+  public void testLocalizedSideEffects4() {
     // An array is a local object, assigning a local array is not a global side-effect.
     assertPureCallsMarked(
         lines(
@@ -931,7 +991,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f"));
   }
 
-  public void testLocalizedSideEffects5() throws Exception {
+  @Test
+  public void testLocalizedSideEffects5() {
     // Assigning a local alias of a global is a global
     // side-effect.
     String source = lines(
@@ -942,7 +1003,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testLocalizedSideEffects6() throws Exception {
+  @Test
+  public void testLocalizedSideEffects6() {
     // Returning a local object that has been modified
     // is not a global side-effect.
     assertPureCallsMarked(
@@ -964,7 +1026,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f"));
   }
 
-  public void testLocalizedSideEffects7() throws Exception {
+  @Test
+  public void testLocalizedSideEffects7() {
     // Returning a local object that has been modified
     // is not a global side-effect.
     assertPureCallsMarked(
@@ -988,7 +1051,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f"));
   }
 
-  public void testLocalizedSideEffects8() throws Exception {
+  @Test
+  public void testLocalizedSideEffects8() {
     // Returning a local object that has been modified
     // is not a global side-effect.
     // TODO(tdeegan): Not yet. Propagate local object information.
@@ -1002,7 +1066,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A"));
   }
 
-  public void testLocalizedSideEffects9() throws Exception {
+  @Test
+  public void testLocalizedSideEffects9() {
     // Returning a local object that has been modified
     // is not a global side-effect.
     // TODO(johnlenz): Not yet. Propagate local object information.
@@ -1016,7 +1081,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A"));
   }
 
-  public void testLocalizedSideEffects10() throws Exception {
+  @Test
+  public void testLocalizedSideEffects10() {
     // Returning a local object that has been modified
     // is not a global side-effect.
     String source = lines(
@@ -1030,7 +1096,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A"));
   }
 
-  public void testLocalizedSideEffects11() throws Exception {
+  @Test
+  public void testLocalizedSideEffects11() {
     // TODO(tdeegan): updateA is side effect free.
     // Calling a function of a local object that taints this.
     String source =
@@ -1053,7 +1120,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A", "B"));
   }
 
-  public void testLocalizedSideEffects12() throws Exception {
+  @Test
+  public void testLocalizedSideEffects12() {
     // An array is a local object, assigning a local array is not a global
     // side-effect. This tests the behavior if the access is in a block scope.
     assertPureCallsMarked(
@@ -1071,6 +1139,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects13() {
     disableTypeCheck();
     String source = lines(
@@ -1079,6 +1148,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects14() {
     disableTypeCheck();
     String source = lines(
@@ -1087,6 +1157,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects15() {
     disableTypeCheck();
     String source = lines(
@@ -1095,6 +1166,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects16() {
     disableTypeCheck();
     String source = lines(
@@ -1103,6 +1175,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects17() {
     disableTypeCheck();
     String source = lines(
@@ -1111,6 +1184,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects18() {
     disableTypeCheck();
     String source = lines(
@@ -1119,6 +1193,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
+  @Test
   public void testLocalizedSideEffects19() {
     disableTypeCheck();
     String source = lines(
@@ -1127,6 +1202,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("SomeCtor"));
   }
 
+  @Test
   public void testLocalizedSideEffects20() {
     disableTypeCheck();
     String source = lines(
@@ -1135,6 +1211,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("SomeCtor"));
   }
 
+  @Test
   public void testLocalizedSideEffects21() {
     // TODO(bradfordcsmith): Remove NEITHER when type checkers understand destructuring and
     // let/const.
@@ -1143,6 +1220,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects22() {
     disableTypeCheck();
     String source = lines(
@@ -1151,6 +1229,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
+  @Test
   public void testLocalizedSideEffects23() {
     // TODO(bradfordcsmith): Remove NEITHER when type checkers understand destructuring and
     // let/const.
@@ -1162,6 +1241,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
+  @Test
   public void testLocalizedSideEffects24() {
     disableTypeCheck();
     String source = lines(
@@ -1170,14 +1250,16 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testUnaryOperators1() throws Exception {
+  @Test
+  public void testUnaryOperators1() {
     String source = lines(
         "function f() {var x = 1; x++}",
         "f()");
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
-  public void testUnaryOperators2() throws Exception {
+  @Test
+  public void testUnaryOperators2() {
     String source = lines(
         "var x = 1;",
         "function f() {x++}",
@@ -1185,7 +1267,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testUnaryOperators3() throws Exception {
+  @Test
+  public void testUnaryOperators3() {
     assertPureCallsMarked(
         lines(
             "function f() {var x = {foo : 0}; x.foo++}", // preserve newline
@@ -1201,7 +1284,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f"));
   }
 
-  public void testUnaryOperators4() throws Exception {
+  @Test
+  public void testUnaryOperators4() {
     String source = lines(
         "var x = {foo : 0};",
         "function f() {x.foo++}",
@@ -1209,7 +1293,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testUnaryOperators5() throws Exception {
+  @Test
+  public void testUnaryOperators5() {
     assertPureCallsMarked(
         lines(
             "function f(x) {x.foo++}", // preserve newline
@@ -1225,7 +1310,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f"));
   }
 
-  public void testDeleteOperator1() throws Exception {
+  @Test
+  public void testDeleteOperator1() {
     String source = lines(
         "var x = {};",
         "function f() {delete x}",
@@ -1233,127 +1319,183 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testDeleteOperator2() throws Exception {
+  @Test
+  public void testDeleteOperator2() {
     String source = lines(
         "function f() {var x = {}; delete x}",
         "f()");
     assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
-  public void testOrOperator1() throws Exception {
-    String source = lines(
-        "var f = externNsef1 || externNsef2;",
-        "f()");
-    assertNoPureCalls(source);
+  // Start pure alias
+
+  @Test
+  public void testOperatorsTraversal_pureAlias_pureAlias() {
+    assertCallableExpressionPure(true, "externNsef1 || externNsef2");
+    assertCallableExpressionPure(true, "externNsef1 && externNsef2");
+    assertCallableExpressionPure(true, "externNsef1, externNsef2");
+    assertCallableExpressionPure(true, "x ? externNsef1 : externNsef2");
   }
 
-  public void testOrOperator2() throws Exception {
-    String source = lines(
-        "var f = function(){} || externNsef2;",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_pureAlias_pureLiteral() {
+    assertCallableExpressionPure(true, "externNsef1 || function() { }");
+    assertCallableExpressionPure(true, "externNsef1 && function() { }");
+    assertCallableExpressionPure(true, "externNsef1, function() { }");
+    assertCallableExpressionPure(true, "x ? externNsef1 : function() { }");
   }
 
-  public void testOrOperator3() throws Exception {
-    String source = lines(
-        "var f = externNsef2 || function(){};",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_pureAlias_impureAlias() {
+    assertCallableExpressionPure(false, "externNsef1 || externSef2");
+    assertCallableExpressionPure(false, "externNsef1 && externSef2");
+    assertCallableExpressionPure(false, "externNsef1, externSef2");
+    assertCallableExpressionPure(false, "x ? externNsef1 : externSef2");
   }
 
-  public void testOrOperators4() throws Exception {
-    String source = lines(
-        "var f = function(){} || function(){};",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_pureAlias_impureLiteral() {
+    assertCallableExpressionPure(false, "externNsef1 || function() { throw 0; }");
+    assertCallableExpressionPure(false, "externNsef1 && function() { throw 0; }");
+    assertCallableExpressionPure(false, "externNsef1, function() { throw 0; }");
+    assertCallableExpressionPure(false, "x ? externNsef1 : function() { throw 0; }");
   }
 
-  public void testAndOperator1() throws Exception {
-    String source = lines(
-        "var f = externNsef1 && externNsef2;",
-        "f()");
-    assertNoPureCalls(source);
+  // End pure alias, start pure literal
+
+  @Test
+  public void testOperatorsTraversal_pureLiteral_pureAlias() {
+    assertCallableExpressionPure(true, "function() { } || externNsef2");
+    assertCallableExpressionPure(true, "function() { } && externNsef2");
+    assertCallableExpressionPure(true, "function() { }, externNsef2");
+    assertCallableExpressionPure(true, "x ? function() { } : externNsef2");
   }
 
-  public void testAndOperator2() throws Exception {
-    String source = lines(
-        "var f = function(){} && externNsef2;",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_pureLiteral_pureLiteral() {
+    assertCallableExpressionPure(true, "function() { } || function() { }");
+    assertCallableExpressionPure(true, "function() { } && function() { }");
+    assertCallableExpressionPure(true, "function() { }, function() { }");
+    assertCallableExpressionPure(true, "x ? function() { } : function() { }");
   }
 
-  public void testAndOperator3() throws Exception {
-    String source = lines(
-        "var f = externNsef2 && function(){};",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_pureLiteral_impureAlias() {
+    assertCallableExpressionPure(false, "function() { } || externSef2");
+    assertCallableExpressionPure(false, "function() { } && externSef2");
+    assertCallableExpressionPure(false, "function() { }, externSef2");
+    assertCallableExpressionPure(false, "x ? function() { } : externSef2");
   }
 
-  public void testAndOperators4() throws Exception {
-    String source = lines(
-        "var f = function(){} && function(){};",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_pureLiteral_impureLiteral() {
+    assertCallableExpressionPure(false, "function() { } || function() { throw 0; }");
+    assertCallableExpressionPure(false, "function() { } && function() { throw 0; }");
+    assertCallableExpressionPure(false, "function() { }, function() { throw 0; }");
+    assertCallableExpressionPure(false, "x ? function() { } : function() { throw 0; }");
   }
 
-  public void testHookOperator1() throws Exception {
-    String source = lines(
-        "var f = true ? externNsef1 : externNsef2;",
-        "f()");
-    assertNoPureCalls(source);
+  // End pure literal, start impure alias
+
+  @Test
+  public void testOperatorsTraversal_impureAlias_pureAlias() {
+    assertCallableExpressionPure(false, "externSef1 || externNsef2");
+    assertCallableExpressionPure(false, "externSef1 && externNsef2");
+    assertCallableExpressionPure(true, "externSef1, externNsef2");
+    assertCallableExpressionPure(false, "x ? externSef1 : externNsef2");
   }
 
-  public void testHookOperator2() throws Exception {
-    String source = lines(
-        "var f = true ? function(){} : externNsef2;",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_impureAlias_pureLiteral() {
+    assertCallableExpressionPure(false, "externSef1 || function() { }");
+    assertCallableExpressionPure(false, "externSef1 && function() { }");
+    assertCallableExpressionPure(true, "externSef1, function() { }");
+    assertCallableExpressionPure(false, "x ? externSef1 : function() { }");
   }
 
-  public void testHookOperator3() throws Exception {
-    String source = lines(
-        "var f = true ? externNsef2 : function(){};",
-        "f()");
-    assertNoPureCalls(source);
+  @Test
+  public void testOperatorsTraversal_impureAlias_impureAlias() {
+    assertCallableExpressionPure(false, "externSef1 || externSef2");
+    assertCallableExpressionPure(false, "externSef1 && externSef2");
+    assertCallableExpressionPure(false, "externSef1, externSef2");
+    assertCallableExpressionPure(false, "x ? externSef1 : externSef2");
   }
 
-  public void testHookOperators4() throws Exception {
-    String source = lines(
-        "var f = true ? function(){} : function(){};",
-        "f()");
-    assertPureCallsMarked(source, ImmutableList.<String>of("f"));
+  @Test
+  public void testOperatorsTraversal_impureAlias_impureLiteral() {
+    assertCallableExpressionPure(false, "externSef1 || function() { throw 0; }");
+    assertCallableExpressionPure(false, "externSef1 && function() { throw 0; }");
+    assertCallableExpressionPure(false, "externSef1, function() { throw 0; }");
+    assertCallableExpressionPure(false, "x ? externSef1 : function() { throw 0; }");
   }
 
-  public void testHookOperators5() throws Exception {
-    String source = lines(
-        "var f = String.prototype.trim ? function(str){return str} : function(){};",
-        "f()");
-    assertPureCallsMarked(source, ImmutableList.<String>of("f"));
+  // End impure alias, start impure literal
+
+  @Test
+  public void testOperatorsTraversal_impureLiteral_pureAlias() {
+    assertCallableExpressionPure(false, "function() { throw 0; } || externNsef2");
+    assertCallableExpressionPure(false, "function() { throw 0; } && externNsef2");
+    assertCallableExpressionPure(true, "function() { throw 0; }, externNsef2");
+    assertCallableExpressionPure(false, "x ? function() { throw 0; } : externNsef2");
   }
 
-  public void testHookOperators6() throws Exception {
-    String source = lines(
-        "var f = yyy ? function(str){return str} : xxx ? function() {} : function(){};",
-        "f()");
-    assertPureCallsMarked(source, ImmutableList.<String>of("f"));
+  @Test
+  public void testOperatorsTraversal_impureLiteral_pureLiteral() {
+    assertCallableExpressionPure(false, "function() { throw 0; } || function() { }");
+    assertCallableExpressionPure(false, "function() { throw 0; } && function() { }");
+    assertCallableExpressionPure(true, "function() { throw 0; }, function() { }");
+    assertCallableExpressionPure(false, "x ? function() { throw 0; } : function() { }");
   }
 
-  public void testThrow1() throws Exception {
+  @Test
+  public void testOperatorsTraversal_impureLiteral_impureAlias() {
+    assertCallableExpressionPure(false, "function() { throw 0; } || externSef2");
+    assertCallableExpressionPure(false, "function() { throw 0; } && externSef2");
+    assertCallableExpressionPure(false, "function() { throw 0; }, externSef2");
+    assertCallableExpressionPure(false, "x ? function() { throw 0; } : externSef2");
+  }
+
+  @Test
+  public void testOperatorsTraversal_impureLiteral_impureLiteral() {
+    assertCallableExpressionPure(false, "function() { throw 0; } || function() { throw 0; }");
+    assertCallableExpressionPure(false, "function() { throw 0; } && function() { throw 0; }");
+    assertCallableExpressionPure(false, "function() { throw 0; }, function() { throw 0; }");
+    assertCallableExpressionPure(false, "x ? function() { throw 0; } : function() { throw 0; }");
+  }
+
+  // End impure literal
+
+  @Test
+  public void testKnownDynamicFunctions_areBlacklistedForAliasing() {
+    for (String name : ImmutableList.of("call", "apply", "constructor")) {
+      assertNoPureCalls(
+          lines(
+              // Create a known pure definition so we're sure the name isn't just undefined.
+              "foo." + name + " = function() { };", //
+              "const f = foo." + name + ";",
+              "f();"));
+    }
+  }
+
+  @Test
+  public void testThrow1() {
     String source = lines(
         "function f(){throw Error()};",
         "f()");
-    assertPureCallsMarked(source, ImmutableList.<String>of("Error"));
+    assertPureCallsMarked(source, ImmutableList.of("Error"));
   }
 
-  public void testThrow2() throws Exception {
+  @Test
+  public void testThrow2() {
     String source = lines(
         "/**@constructor*/function A(){throw Error()};",
         "function f(){return new A()}",
         "f()");
-    assertPureCallsMarked(source, ImmutableList.<String>of("Error"));
+    assertPureCallsMarked(source, ImmutableList.of("Error"));
   }
 
-  public void testAssignmentOverride() throws Exception {
+  @Test
+  public void testAssignmentOverride() {
     String source = lines(
         "/**@constructor*/function A(){}",
         "A.prototype.foo = function(){};",
@@ -1373,7 +1515,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(sourceOverride, ImmutableList.of("A"));
   }
 
-  public void testInheritance1() throws Exception {
+  @Test
+  public void testInheritance1() {
     String source = CompilerTypeTestCase.CLOSURE_DEFS + lines(
         "/**@constructor*/function I(){}",
         "I.prototype.foo = function(){};",
@@ -1391,7 +1534,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
                                       "A", "a.foo", "a.bar"));
   }
 
-  public void testInheritance2() throws Exception {
+  @Test
+  public void testInheritance2() {
     String source = CompilerTypeTestCase.CLOSURE_DEFS + lines(
         "/**@constructor*/function I(){}",
         "I.prototype.foo = function(){};",
@@ -1406,7 +1550,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("goog.inherits", "I", "A"));
   }
 
-  public void testAmbiguousDefinitions() throws Exception {
+  @Test
+  public void testAmbiguousDefinitions() {
     String source = CompilerTypeTestCase.CLOSURE_DEFS + lines(
         "var globalVar = 1;",
         "A.f = function() {globalVar = 2;};",
@@ -1418,7 +1563,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testAmbiguousDefinitionsCall() throws Exception {
+  @Test
+  public void testAmbiguousDefinitionsCall() {
     String source = CompilerTypeTestCase.CLOSURE_DEFS + lines(
         "var globalVar = 1;",
         "A.f = function() {globalVar = 2;};",
@@ -1430,19 +1576,20 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testAmbiguousDefinitionsAllPropagationTypes() throws Exception {
+  @Test
+  public void testAmbiguousDefinitionsAllPropagationTypes() {
     String source = CompilerTypeTestCase.CLOSURE_DEFS + lines(
-        "var globalVar = 1;",
         "/**@constructor*/A.f = function() { this.x = 5; };",
         "/**@constructor*/B.f = function() {};",
         "function sideEffectCaller() { new C.f() };",
         "sideEffectCaller();"
     );
-    // Can't tell which f is being called so it assumes both.
-    assertPureCallsMarked(source, ImmutableList.<String>of("C.f", "sideEffectCaller"));
+    // "f" is only known to mutate `this`, but `this` is a local object when invoked with `new`.
+    assertPureCallsMarked(source, ImmutableList.of("C.f", "sideEffectCaller"));
   }
 
-  public void testAmbiguousDefinitionsCallWithThis() throws Exception {
+  @Test
+  public void testAmbiguousDefinitionsCallWithThis() {
     String source = CompilerTypeTestCase.CLOSURE_DEFS + lines(
         "var globalVar = 1;",
         "A.modifiesThis = function() { this.x = 5; };",
@@ -1453,10 +1600,11 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     );
 
     // Can't tell which modifiesThis is being called so it assumes both.
-    assertPureCallsMarked(source, ImmutableList.<String>of("Constructor"));
+    assertPureCallsMarked(source, ImmutableList.of("Constructor"));
   }
 
-  public void testAmbiguousDefinitionsBothCallThis() throws Exception {
+  @Test
+  public void testAmbiguousDefinitionsBothCallThis() {
     String source =
         lines(
             "B.f = function() {",
@@ -1472,22 +1620,25 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("C"));
   }
 
-  public void testAmbiguousDefinitionsAllCallThis() throws Exception {
+  @Test
+  public void testAmbiguousDefinitionsAllCallThis() {
     String source =
         lines(
             "A.f = function() { this.y = 1 };",
             "C.f = function() { };",
             "var g = function() {D.f()};",
             "/** @constructor */ var h = function() {E.f.apply(this)};",
-            "var i = function() {F.f.apply({})};", // it can't tell {} is local.
+            // TODO(nickreid): Detect that `{}` being passed as `this` is local. With that
+            // understanding, we could determine that `i` has no side-effects.
+            "var i = function() { F.f.apply({}); };",
             "g();",
             "new h();",
-            "i();" // With better locals tracking i could be identified as pure
-            );
+            "i();");
     assertPureCallsMarked(source, ImmutableList.of("F.f.apply", "h"));
   }
 
-  public void testAmbiguousDefinitionsMutatesGlobalArgument() throws Exception {
+  @Test
+  public void testAmbiguousDefinitionsMutatesGlobalArgument() {
     String source =
         lines(
             "// Mutates argument",
@@ -1501,7 +1652,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testAmbiguousDefinitionsMutatesLocalArgument() throws Exception {
+  @Test
+  public void testAmbiguousDefinitionsMutatesLocalArgument() {
     assertPureCallsMarked(
         lines(
             "// Mutates argument",
@@ -1533,6 +1685,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("C.a", "b"));
   }
 
+  @Test
   public void testAmbiguousExternDefinitions() {
     assertNoPureCalls("x.duplicateExternFunc()");
 
@@ -1547,10 +1700,10 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
   }
 
   /**
-   * Test bug where the FunctionInformation for "A.x" and "a" were separate causing
-   * .x() calls to appear pure because the global side effect was only registed for the function
-   * linked to "a".
+   * Test bug where the FunctionInformation for "A.x" and "a" were separate causing .x() calls to
+   * appear pure because the global side effect was only registed for the function linked to "a".
    */
+  @Test
   public void testAmbiguousDefinitionsDoubleDefinition() {
     String source = lines(
         "var global = 1;",
@@ -1561,46 +1714,62 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
+  @Test
   public void testAmbiguousDefinitionsDoubleDefinition2() {
-    String source = lines(
-        "var global = 1;",
-        "A.x = function a() { global++; }",
-        "a = function() {}",
-        "B.x(); a();"
-    );
-    assertNoPureCalls(source);
-  }
-
-  public void testAmbiguousDefinitionsDoubleDefinition3() {
-    String source = lines(
-        "var global = 1;",
-        "A.x = function a() {}",
-        "a = function() { global++; }",
-        "B.x(); a();"
-    );
-    assertPureCallsMarked(source, ImmutableList.of("B.x"));
-  }
-
-  public void testAmbiguousDefinitionsDoubleDefinition4() {
-    String source = lines(
-        "var global = 1;",
-        "A.x = function a() {}",
-        "B.x = function() { global++; }",
-        "B.x(); a();"
-    );
+    String source =
+        lines(
+            "var global = 1;",
+            "A.x = function a() { global++; }",
+            "var a = function() {}", // This is the only `a` is in scope below.
+            "B.x();",
+            "a();");
     assertPureCallsMarked(source, ImmutableList.of("a"));
   }
 
-  public void testAmbiguousDefinitionsDoubleDefinition5() {
-    String source = lines(
-        "var global = 1;",
-        "A.x = cond ? function a() { global++ } : function b() {}",
-        "B.x = function() { global++; }",
-        "B.x(); a(); b();"
-    );
-    assertPureCallsMarked(source, ImmutableList.of("b"));
+  @Test
+  public void testAmbiguousDefinitionsDoubleDefinition3() {
+    String source =
+        lines(
+            "var global = 1;",
+            "A.x = function a() {}",
+            "var a = function() { global++; }", // This is the only `a` is in scope below.
+            "B.x();",
+            "a();");
+    assertPureCallsMarked(source, ImmutableList.of("B.x"));
   }
 
+  @Test
+  public void testAmbiguousDefinitionsDoubleDefinition4() {
+    String source =
+        lines(
+            "var global = 1;",
+            "",
+            "A.x = function a() {}",
+            "B.x = function() { global++; }",
+            "",
+            "B.x();",
+            "a();" // `a` isn't in scope here.
+            );
+    assertNoPureCalls(source);
+  }
+
+  @Test
+  public void testAmbiguousDefinitionsDoubleDefinition5() {
+    String source =
+        lines(
+            "var global = 1;",
+            "",
+            "A.x = cond ? function a() { global++ } : function b() {}",
+            "B.x = function() { global++; }",
+            "",
+            "B.x();",
+            "a();", // `a` isn't in scope here.
+            "b();" // `b` isn't in scope here.
+            );
+    assertNoPureCalls(source);
+  }
+
+  @Test
   public void testAmbiguousDefinitionsDoubleDefinition6() {
     String source = lines(
             "var SetCustomData1 = function SetCustomData2(element, dataName, dataValue) {",
@@ -1611,12 +1780,47 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testCallBeforeDefinition() throws Exception {
+  @Test
+  public void testInnerFunction_isNeverPure() {
+    // TODO(b/129503101): `pure` should be marked pure in this case.
+    assertNoPureCalls(
+        lines(
+            "function f() {", //
+            "  function pure() { };",
+            "  pure();",
+            "}"));
+  }
+
+  @Test
+  public void testNamedFunctionExpression_isNeverPure() {
+    // TODO(b/129503101): `pure` should be marked pure in this case.
+    assertNoPureCalls(
+        lines(
+            "(function pure() {", //
+            "  pure();",
+            "})"));
+  }
+
+  @Test
+  public void testCallBeforeDefinition() {
     assertPureCallsMarked("f(); function f(){}", ImmutableList.of("f"));
     assertPureCallsMarked("var a = {}; a.f(); a.f = function (){}", ImmutableList.of("a.f"));
   }
 
-  public void testConstructorThatModifiesThis1() throws Exception {
+  @Test
+  public void testSideEffectsArePropagated_toPredecingCaller_fromFollowingCallee() {
+    assertPureCallsMarked(
+        lines(
+            "var following = function() { };", // This implementation is pure...
+            "var preceding = function() { following(); };", // so this one should be initially...
+            "following = function() { throw 'something'; };", //  but then it becomes impure.
+            "",
+            "preceding();"),
+        ImmutableList.of());
+  }
+
+  @Test
+  public void testConstructorThatModifiesThis1() {
     String source = lines(
         "/**@constructor*/function A(){this.foo = 1}",
         "function f() {return new A}",
@@ -1625,7 +1829,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A", "f"));
   }
 
-  public void testConstructorThatModifiesThis2() throws Exception {
+  @Test
+  public void testConstructorThatModifiesThis2() {
     String source = lines(
         "/**@constructor*/function A(){this.foo()}",
         "A.prototype.foo = function(){this.data=24};",
@@ -1635,7 +1840,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A", "f"));
   }
 
-  public void testConstructorThatModifiesThis3() throws Exception {
+  @Test
+  public void testConstructorThatModifiesThis3() {
     // test chained
     String source = lines(
         "/**@constructor*/function A(){this.foo()}",
@@ -1647,7 +1853,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A", "f"));
   }
 
-  public void testConstructorThatModifiesThis4() throws Exception {
+  @Test
+  public void testConstructorThatModifiesThis4() {
     String source = lines(
         "/**@constructor*/function A(){foo.call(this)}",
         "function foo(){this.data=24};",
@@ -1657,7 +1864,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A", "f"));
   }
 
-  public void testConstructorThatModifiesGlobal1() throws Exception {
+  @Test
+  public void testConstructorThatModifiesGlobal1() {
     String source = lines(
         "var b = 0;",
         "/**@constructor*/function A(){b=1};",
@@ -1667,7 +1875,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testConstructorThatModifiesGlobal2() throws Exception {
+  @Test
+  public void testConstructorThatModifiesGlobal2() {
     String source = lines(
         "/**@constructor*/function A(){this.foo()}",
         "A.prototype.foo = function(){b=1};",
@@ -1677,7 +1886,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testCallFunctionThatModifiesThis() throws Exception {
+  @Test
+  public void testCallFunctionThatModifiesThis() {
     String source = lines(
         "/**@constructor*/function A(){}" ,
             "A.prototype.foo = function(){this.data=24};" ,
@@ -1688,7 +1898,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("A", "A", "f"));
   }
 
-  public void testMutatesArguments1() throws Exception {
+  @Test
+  public void testMutatesArguments1() {
     assertPureCallsMarked(
         lines(
             "function f(x) { x.y = 1; }", // preserve newline
@@ -1704,14 +1915,16 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f"));
   }
 
-  public void testMutatesArguments2() throws Exception {
+  @Test
+  public void testMutatesArguments2() {
     String source = lines(
         "function f(x) { x.y = 1; }",
         "f(window);");
     assertNoPureCalls(source);
   }
 
-  public void testMutatesArguments3() throws Exception {
+  @Test
+  public void testMutatesArguments3() {
     // We could do better here with better side-effect propagation.
     String source = lines(
         "function f(x) { x.y = 1; }",
@@ -1720,7 +1933,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testMutatesArguments4() throws Exception {
+  @Test
+  public void testMutatesArguments4() {
     assertPureCallsMarked(
         lines(
             "function f(x) { x.y = 1; }", // preserve newline
@@ -1738,7 +1952,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         ImmutableList.of("f", "g"));
   }
 
-  public void testMutatesArguments5() throws Exception {
+  @Test
+  public void testMutatesArguments5() {
     String source = lines(
         "function f(x) {",
         "  function g() {",
@@ -1750,14 +1965,16 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testMutatesArgumentsArray1() throws Exception {
+  @Test
+  public void testMutatesArgumentsArray1() {
     String source = lines(
         "function f(x) { arguments[0] = 1; }",
         "f({});");
-    assertPureCallsMarked(source, ImmutableList.<String>of("f"));
+    assertPureCallsMarked(source, ImmutableList.of("f"));
   }
 
-  public void testMutatesArgumentsArray2() throws Exception {
+  @Test
+  public void testMutatesArgumentsArray2() {
     // We could be smarter here.
     String source = lines(
         "function f(x) { arguments[0].y = 1; }",
@@ -1765,13 +1982,15 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testMutatesArgumentsArray3() throws Exception {
+  @Test
+  public void testMutatesArgumentsArray3() {
     String source = lines(
         "function f(x) { arguments[0].y = 1; }",
         "f(x);");
     assertNoPureCalls(source);
   }
 
+  @Test
   public void testCallGenerator1() {
     disableTypeCheck(); // type check for yield not yet implemented
     String source =
@@ -1788,10 +2007,11 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     Node lastRoot = getLastCompiler().getRoot().getLastChild();
     Node call = findQualifiedNameNode("f", lastRoot).getParent();
     assertThat(call.isNoSideEffectsCall()).isFalse();
-    assertEquals(
-        new Node.SideEffectFlags().setReturnsTainted().valueOf(), call.getSideEffectFlags());
+    assertThat(call.getSideEffectFlags())
+        .isEqualTo(new Node.SideEffectFlags().setReturnsTainted().valueOf());
   }
 
+  @Test
   public void testCallGenerator2() {
     disableTypeCheck(); // type check for yield not yet implemented
     String source = lines(
@@ -1804,27 +2024,30 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertNoPureCalls(source);
   }
 
-  public void testCallFunctionFOrG() throws Exception {
+  @Test
+  public void testCallFunctionFOrG() {
     String source = lines(
         "function f(){}",
         "function g(){}",
         "function h(){ (f || g)() }",
         "h()"
     );
-    assertPureCallsMarked(source, ImmutableList.of("(f || g)", "h"));
+    assertPureCallsMarked(source, ImmutableList.of("f || g", "h"));
   }
 
-  public void testCallFunctionFOrGViaHook() throws Exception {
+  @Test
+  public void testCallFunctionFOrGViaHook() {
     String source = lines(
         "function f(){}",
         "function g(){}",
         "function h(){ (false ? f : g)() }",
         "h()"
     );
-    assertPureCallsMarked(source, ImmutableList.of("(f : g)", "h"));
+    assertPureCallsMarked(source, ImmutableList.of("false ? f : g", "h"));
   }
 
-  public void testCallFunctionForGorH() throws Exception {
+  @Test
+  public void testCallFunctionForGorH() {
     String source = lines(
         "function f(){}",
         "function g(){}",
@@ -1832,10 +2055,11 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         "function i(){ (false ? f : (g || h))() }",
         "i()"
     );
-    assertPureCallsMarked(source, ImmutableList.of("(f : (g || h))", "i"));
+    assertPureCallsMarked(source, ImmutableList.of("false ? f : (g || h)", "i"));
   }
 
-  public void testCallFunctionForGWithSideEffects() throws Exception {
+  @Test
+  public void testCallFunctionForGWithSideEffects() {
     String source = lines(
         "var x = 0;",
         "function f(){x = 10}",
@@ -1846,10 +2070,11 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         "function k(){ (g || g)() }",
         "h(); i(); j(); k()"
     );
-    assertPureCallsMarked(source, ImmutableList.of("(g || g)", "k"));
+    assertPureCallsMarked(source, ImmutableList.of("g || g", "k"));
   }
 
-  public void testCallFunctionFOrGViaHookWithSideEffects() throws Exception {
+  @Test
+  public void testCallFunctionFOrGViaHookWithSideEffects() {
     String source = lines(
         "var x = 0;",
         "function f(){x = 10}",
@@ -1861,10 +2086,11 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         "h(); i(); j(); k()"
     );
 
-    assertPureCallsMarked(source, ImmutableList.of("(g : g)", "k"));
+    assertPureCallsMarked(source, ImmutableList.of("false ? g : g", "k"));
   }
 
-  public void testCallRegExpWithSideEffects() throws Exception {
+  @Test
+  public void testCallRegExpWithSideEffects() {
     String source = lines(
         "var x = 0;",
         "function k(){(/a/).exec('')}",
@@ -1874,55 +2100,232 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     regExpHaveSideEffects = true;
     assertNoPureCalls(source);
     regExpHaveSideEffects = false;
-    assertPureCallsMarked(source, ImmutableList.of(
-        "REGEXP STRING exec", "k"));
+    assertPureCallsMarked(source, ImmutableList.of("/a/.exec", "k"));
   }
 
-  public void testAnonymousFunction1() throws Exception {
-    assertPureCallsMarked("(function (){})();", ImmutableList.of("FUNCTION"));
+  @Test
+  public void testAnonymousFunction1() {
+    assertPureCallsMarked("(function (){})();", ImmutableList.of("function(){}"));
   }
 
-  public void testAnonymousFunction2() throws Exception {
+  @Test
+  public void testAnonymousFunction2() {
     String source = "(Error || function (){})();";
 
-    assertPureCallsMarked(source, ImmutableList.of("(Error || FUNCTION)"));
+    assertPureCallsMarked(source, ImmutableList.of("(Error || function(){})"));
   }
 
-  public void testAnonymousFunction3() throws Exception {
+  @Test
+  public void testAnonymousFunction3() {
     String source = "var a = (Error || function (){})();";
 
-    assertPureCallsMarked(source, ImmutableList.of("(Error || FUNCTION)"));
+    assertPureCallsMarked(source, ImmutableList.of("(Error || function(){})"));
   }
 
   // Indirect complex function definitions aren't yet supported.
-  public void testAnonymousFunction4() throws Exception {
+  @Test
+  public void testAnonymousFunction4() {
     String source = lines(
         "var a = (Error || function (){});",
         "a();"
     );
 
-    // This should be "(Error || FUNCTION)" but isn't.
-    assertNoPureCalls(source);
+    assertPureCallsMarked(source, ImmutableList.of("a"));
   }
 
+  @Test
   public void testClassMethod1() {
     disableTypeCheck();
     String source = "class C { m() { alert(1); } }; (new C).m();";
-    assertNoPureCalls(source);
+    assertPureCallsMarked(source, ImmutableList.of("C"));
   }
 
+  @Test
   public void testClassMethod2() {
     disableTypeCheck();
     String source = "class C { m() { } }; (new C).m();";
-    assertPureCallsMarked(source, ImmutableList.of("NEW STRING m"));
+    assertPureCallsMarked(source, ImmutableList.of("C", "new C().m"));
   }
 
+  @Test
   public void testClassMethod3() {
     disableTypeCheck();
     String source = "class C { m1() { } m2() { this.m1(); }}; (new C).m2();";
-    assertPureCallsMarked(source, ImmutableList.of("this.m1", "NEW STRING m2"));
+    assertPureCallsMarked(source, ImmutableList.of("C", "this.m1", "new C().m2"));
   }
 
+  @Test
+  public void testClassInstantiation_implicitCtor_noSuperclass_isPure() {
+    assertPureCallsMarked(
+        lines(
+            "class C { }", //
+            "",
+            "new C()"),
+        ImmutableList.of("C"));
+  }
+
+  @Test
+  public void testClassInstantiation_pureCtor_noSuperclass_isPure() {
+    assertPureCallsMarked(
+        lines(
+            "class C {",
+            "  constructor() { }",
+            "}", //
+            "",
+            "new C()"),
+        ImmutableList.of("C"));
+  }
+
+  @Test
+  public void testClassInstantiation_impureCtor_noSuperclass_isImpure() {
+    assertNoPureCalls(
+        lines(
+            "class C {",
+            "  constructor() { throw 0; }",
+            "}", //
+            "",
+            "new C()"));
+  }
+
+  @Test
+  public void testClassInstantiation_implictCtor_pureSuperclassCtor_isPure() {
+    assertPureCallsMarked(
+        lines(
+            "class A { }", // Implict ctor is pure.
+            "class C extends A { }",
+            "",
+            "new C()"),
+        ImmutableList.of("C"));
+  }
+
+  @Test
+  public void testClassInstantiation_implictCtor_impureSuperclassCtor_isImpure() {
+    assertNoPureCalls(
+        lines(
+            "class A {",
+            "  constructor() { throw 0; }",
+            "}", //
+            "class C extends A { }",
+            "",
+            "new C()"));
+  }
+
+  @Test
+  public void testClassInstantiation_explitCtor_pureSuperclassCtor_isPure() {
+    assertPureCallsMarked(
+        lines(
+            "class A { }",
+            "class C extends A {",
+            "  constructor() {",
+            // This should be marked as "mutates this" despite being a call to a pure function.
+            // `super()` binds `this`, and more importantly is syntactically required. Marking it
+            // this way prevents removal.
+            "    super();",
+            "  }",
+            "}",
+            "",
+            "new C()"),
+        ImmutableList.of("C"));
+  }
+
+  @Test
+  public void testClassInstantiation_explitCtor_impureSuperclassCtor_isImpure() {
+    assertNoPureCalls(
+        lines(
+            "class A {",
+            "  constructor() { throw 0; }",
+            "}", //
+            "class C extends A {",
+            "  constructor() { super(); }",
+            "}",
+            "",
+            "new C()"));
+  }
+
+  @Test
+  public void testClassInstantiation_mutatesThis_traversesSuper() {
+    assertPureCallsMarked(
+        lines(
+            "class A {",
+            "  constructor() { this.foo = 9; }",
+            "}", //
+            "class C extends A {",
+            "  constructor() { super(); }",
+            "}",
+            "",
+            "new C()"),
+        ImmutableList.of("C"));
+  }
+
+  @Test
+  public void testMutatesThis_traversesThisAsReceiver() {
+    assertPureCallsMarked(
+        lines(
+            "class C {",
+            "  constructor() {",
+            "    /** @type {number} */",
+            "    this.foo;",
+            "",
+            "    this.mutateThis();",
+            "  }",
+            "",
+            "  mutateThis() { this.foo = 9; }",
+            "}",
+            "",
+            // Instantiation swallows "mutates this" side-effects.
+            "var x = new C();",
+            // But in general it is still a side-effect.
+            "x.mutateThis()"),
+        ImmutableList.of("C"));
+  }
+
+  @Test
+  public void testMutatesThis_traversesSuperAsReceiver() {
+    assertPureCallsMarked(
+        lines(
+            "class C {",
+            "  constructor() {",
+            "    /** @type {number} */",
+            "    this.foo;",
+            "",
+            // Ignore the fact that there's no superclass.
+            "    super.mutateThis();",
+            "  }",
+            "",
+            "  mutateThis() { this.foo = 9; }",
+            "}",
+            "",
+            // Instantiation swallows "mutates this" side-effects.
+            "var x = new C();",
+            // But in general it is still a side-effect.
+            "x.mutateThis()"),
+        ImmutableList.of("C"));
+  }
+
+  @Test
+  public void testMutatesThis_expandsToMutatesGlobalScope_traversingArbitraryReceiver() {
+    assertNoPureCalls(
+        lines(
+            "class C {",
+            "  constructor() {",
+            "    /** @type {number} */",
+            "    this.foo;",
+            "",
+            "    somethingElse.mutateThis();",
+            "  }",
+            "",
+            "  mutateThis() {",
+            "    this.foo = 9;",
+            "  }",
+            "}",
+            "",
+            // Instantiation swallows "mutates this" side-effects.
+            "var x = new C();",
+            // But in general it is still a side-effect.
+            "x.mutateThis()"));
+  }
+
+  @Test
   public void testGlobalScopeTaintedByWayOfThisPropertyAndForOfLoop() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -1944,6 +2347,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testGlobalScopeTaintedByWayOfThisPropertyAndForOfLoopWithDestructuring() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -1966,6 +2370,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfFunctionScopedLet() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -1983,6 +2388,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfFunctionScopedLetAssignedInForOf() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -1999,6 +2405,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfFunctionScopedLetAssignedInForOfWithDestructuring() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2015,6 +2422,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfForOfAssignmentToQualifiedName() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2031,6 +2439,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfForInAssignmentToQualifiedName() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     String source =
@@ -2056,6 +2465,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfBlockScopedLet() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2073,6 +2483,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfBlockScopedConst() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2089,6 +2500,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfForOfScopedConst() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2104,6 +2516,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfNameDeclaration() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2118,6 +2531,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of());
   }
 
+  @Test
   public void testArgumentTaintedByWayOfDestructuringNameDeclaration() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2133,6 +2547,7 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("m1"));
   }
 
+  @Test
   public void testArgumentTaintedByWayOfDestructuringAssignment() {
     // TODO(bradfordcsmith): Enable type check when it supports the languages features used here.
     disableTypeCheck();
@@ -2149,7 +2564,32 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
     assertPureCallsMarked(source, ImmutableList.of("m1"));
   }
 
-  public void testFunctionProperties1() throws Exception {
+  @Test
+  public void testDefaultValueInitializers_areConsidered_whenAnalyzingFunctions() {
+    assertNoPureCalls(
+        lines(
+            "function impure() { throw 'something'; }", //
+            "",
+            "function foo(a = impure()) { }",
+            "foo();"));
+
+    assertPureCallsMarked(
+        lines(
+            "function pure() { }", //
+            "",
+            "function foo(a = pure()) { }",
+            "foo();"),
+        ImmutableList.of("pure", "foo"));
+
+    assertPureCallsMarked(
+        lines(
+            "function foo(a = 0) { }", //
+            "foo();"),
+        ImmutableList.of("foo"));
+  }
+
+  @Test
+  public void testFunctionProperties1() {
     String source = lines(
         "/** @constructor */",
         "function F() { this.bar; }",
@@ -2166,13 +2606,153 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         compiler -> {
           Node lastRoot = compiler.getRoot();
           Node call = findQualifiedNameNode("g.call", lastRoot).getParent();
-          assertEquals(
-              new Node.SideEffectFlags().clearAllFlags().setMutatesArguments().valueOf(),
-              call.getSideEffectFlags());
+          assertThat(call.getSideEffectFlags())
+              .isEqualTo(
+                  new Node.SideEffectFlags().clearAllFlags().setMutatesArguments().valueOf());
         });
   }
 
-  public void testCallCache() throws Exception {
+  @Test
+  public void testAwait_makesFunctionImpure() {
+    assertNoPureCalls(
+        lines(
+            "async function foo() { await 0; }", //
+            "foo();"));
+  }
+
+  @Test
+  public void testTaggedTemplatelit_propagatesCalleeSideEffects() {
+    assertPureCallsMarked(
+        lines(
+            "function tag(a) { throw 'something'; }", //
+            "",
+            "function foo() { tag`Hello World!`; }",
+            "foo();"),
+        ImmutableList.of(),
+        compiler -> {
+          Node lastRoot = compiler.getRoot();
+          Node tagDef = findQualifiedNameNode("tag", lastRoot).getParent();
+          Node fooDef = findQualifiedNameNode("foo", lastRoot).getParent();
+          assertThat(fooDef.getSideEffectFlags()).isEqualTo(tagDef.getSideEffectFlags());
+        });
+  }
+
+  @Test
+  public void testIterableIteration_forOf_makesFunctionImpure() {
+    // TODO(b/127862986): We could consider iteration over a known Array value to be pure.
+    assertNoPureCalls(
+        lines(
+            "function foo(a) { for (const t of a) { } }", //
+            "foo(x);"));
+  }
+
+  @Test
+  public void testIterableIteration_forAwaitOf_makesFunctionImpure() {
+    // TODO(b/127862986): We could consider iteration over a known Array value to be pure.
+    assertNoPureCalls(
+        lines(
+            "function foo(a) { for await (const t of a) { } }", //
+            "foo(x);"));
+  }
+
+  @Test
+  public void testIterableIteration_arraySpread_makesFunctionImpure() {
+    // TODO(b/127862986): We could consider iteration over a known Array value to be pure.
+    assertNoPureCalls(
+        lines(
+            "function foo(a) { [...a]; }", //
+            "foo(x);"));
+  }
+
+  @Test
+  public void testIterableIteration_callSpread_makesFunctionImpure() {
+    // TODO(b/127862986): We could consider iteration over a known Array value to be pure.
+    assertPureCallsMarked(
+        lines(
+            "function pure(...rest) { }",
+            "",
+            "function foo(a) { pure(...a); }", //
+            "foo(x);"),
+        ImmutableList.of("pure"));
+  }
+
+  @Test
+  public void testIterableIteration_newSpread_makesFunctionImpure() {
+    // TODO(b/127862986): We could consider iteration over a known Array value to be pure.
+    assertPureCallsMarked(
+        lines(
+            "/** @constructor */",
+            "function pure(...rest) { }",
+            "",
+            "function foo(a) { new pure(...a); }", //
+            "foo(x);"),
+        ImmutableList.of("pure"));
+  }
+
+  @Test
+  public void testIterableIteration_paramListRest_leavesFunctionPure() {
+    assertPureCallsMarked(
+        lines(
+            "function foo(...a) { }", //
+            "foo();"),
+        ImmutableList.of("foo"));
+  }
+
+  @Test
+  public void testIterableIteration_arrayPatternRest_makesFunctionImpure() {
+    // TODO(b/127862986): We could consider iteration over a known Array value to be pure.
+    assertNoPureCalls(
+        lines(
+            "function foo(a) { const [...x] = a; }", //
+            "foo(x);"));
+  }
+
+  @Test
+  public void testIterableIteration_yieldStar_makesFunctionImpure() {
+    // TODO(b/127862986): We could consider iteration over a known Array value to be pure.
+    assertNoPureCalls(
+        lines(
+            "function* foo(a) { yield* a; }", //
+            "foo(x);"));
+  }
+
+  @Test
+  public void testObjectSpread_leavesFunctionPure() {
+    // We assume that getters are pure, so getters on `a` aren't an issue.
+    //
+    // Spreading doesn't have any _direct_ side-effects; only using members of the extracted
+    // properties would.
+    assertPureCallsMarked(
+        lines(
+            "function foo(a) { ({...a}); }", //
+            "foo(x);"),
+        ImmutableList.of("foo"));
+  }
+
+  @Test
+  public void testObjectRest_leavesFunctionPure() {
+    // We assume that getters are pure, so getters on `a` aren't an issue.
+    //
+    // Resting doesn't have any _direct_ side-effects; only using members of the extracted
+    // properties would.
+    assertPureCallsMarked(
+        lines(
+            "function foo(a, b) { ({...b} = a); }", //
+            "foo(x, y);"),
+        ImmutableList.of("foo"));
+  }
+
+  @Test
+  public void testForAwaitOf_makesFunctionImpure() {
+    assertNoPureCalls(
+        lines(
+            // We use an array-literal so that it's not just the iteration that's impure.
+            "function foo() { for await (const t of []) { } }", //
+            "foo();"));
+  }
+
+  @Test
+  public void testCallCache() {
     String source = lines(
         "var valueFn = function() {};",
         "goog.reflect.cache(externObj, \"foo\", valueFn)"
@@ -2188,7 +2768,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         });
   }
 
-  public void testCallCache_withKeyFn() throws Exception {
+  @Test
+  public void testCallCache_withKeyFn() {
     String source = lines(
         "var valueFn = function(v) { return v };",
         "var keyFn = function(v) { return v };",
@@ -2205,7 +2786,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         });
   }
 
-  public void testCallCache_anonymousFn() throws Exception {
+  @Test
+  public void testCallCache_anonymousFn() {
     String source = "goog.reflect.cache(externObj, \"foo\", function(v) { return v })";
     assertPureCallsMarked(
         source,
@@ -2218,7 +2800,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         });
   }
 
-  public void testCallCache_anonymousFn_hasSideEffects() throws Exception {
+  @Test
+  public void testCallCache_anonymousFn_hasSideEffects() {
     String source = lines(
         "var x = 0;",
         "goog.reflect.cache(externObj, \"foo\", function(v) { return (x+=1) })"
@@ -2233,7 +2816,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         });
   }
 
-  public void testCallCache_hasSideEffects() throws Exception {
+  @Test
+  public void testCallCache_hasSideEffects() {
     String source = lines(
         "var x = 0;",
         "var valueFn = function() { return (x+=1); };",
@@ -2249,7 +2833,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         });
   }
 
-  public void testCallCache_withKeyFn_hasSideEffects() throws Exception {
+  @Test
+  public void testCallCache_withKeyFn_hasSideEffects() {
     String source = lines(
         "var x = 0;",
         "var keyFn = function(v) { return (x+=1) };",
@@ -2266,7 +2851,8 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         });
   }
 
-  public void testCallCache_propagatesSideEffects() throws Exception {
+  @Test
+  public void testCallCache_propagatesSideEffects() {
     String source = lines(
         "var valueFn = function(x) { return x * 2; };",
         "var helper = function(x) { return goog.reflect.cache(externObj, x, valueFn); };",
@@ -2288,12 +2874,26 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         });
   }
 
+  void assertCallableExpressionPure(boolean purity, String expression) {
+    expression = "(" + expression + ")";
+    String directInvocation = expression + "()";
+    String aliasInvocation = "var $testFn = " + expression + "; $testFn()";
+
+    if (purity) {
+      assertPureCallsMarked(directInvocation, ImmutableList.of(expression));
+      assertPureCallsMarked(aliasInvocation, ImmutableList.of("$testFn"));
+    } else {
+      assertNoPureCalls(directInvocation);
+      assertNoPureCalls(aliasInvocation);
+    }
+  }
+
   void assertNoPureCalls(String source) {
-    assertPureCallsMarked(source, ImmutableList.<String>of(), null);
+    assertPureCallsMarked(source, ImmutableList.of(), null);
   }
 
   void assertNoPureCalls(String source, Postcondition post) {
-    assertPureCallsMarked(source, ImmutableList.<String>of(), post);
+    assertPureCallsMarked(source, ImmutableList.of(), post);
   }
 
   void assertPureCallsMarked(String source, List<String> expected) {
@@ -2305,16 +2905,20 @@ public final class PureFunctionIdentifierTest extends CompilerTestCase {
         srcs(source),
         postcondition(
             compiler -> {
-              assertEquals(expected, noSideEffectCalls);
+              assertThat(noSideEffectCalls)
+                  .comparingElementsUsing(JSCompCorrespondences.EQUALITY_WHEN_PARSED_AS_EXPRESSION)
+                  .containsExactlyElementsIn(expected);
               if (post != null) {
                 post.verify(compiler);
               }
             }));
   }
 
-  void checkLocalityOfMarkedCalls(String source, final List<String> expected) {
+  void assertUnescapedReturnCallsMarked(String source, final List<String> expected) {
     testSame(srcs(source));
-    assertEquals(expected, localResultCalls);
+    assertThat(localResultCalls)
+        .comparingElementsUsing(JSCompCorrespondences.EQUALITY_WHEN_PARSED_AS_EXPRESSION)
+        .containsExactlyElementsIn(expected);
   }
 
   @Override

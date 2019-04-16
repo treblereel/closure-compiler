@@ -15,29 +15,36 @@
  */
 package com.google.javascript.jscomp;
 
+import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
+
 import com.google.common.collect.ImmutableList;
 import com.google.javascript.jscomp.CompilerOptions.LanguageMode;
 import com.google.javascript.rhino.Node;
-import junit.framework.TestCase;
+import java.nio.charset.Charset;
+import org.junit.Before;
 
 /** Base class for tests that exercise {@link CodePrinter}. */
-public abstract class CodePrinterTestBase extends TestCase {
+public abstract class CodePrinterTestBase {
   // If this is set, ignore parse warnings and only fail the test
   // for parse errors.
   protected boolean allowWarnings = false;
   protected boolean trustedStrings = true;
   protected boolean preserveTypeAnnotations = false;
+  protected boolean useUnsupportedFeatures = false;
   protected LanguageMode languageMode = LanguageMode.ECMASCRIPT5;
   protected Compiler lastCompiler = null;
+  protected Charset outputCharset = null;
 
-  @Override
-  protected void setUp() throws Exception {
-    super.setUp();
+  @Before
+  public void setUp() throws Exception {
     allowWarnings = false;
     preserveTypeAnnotations = false;
     trustedStrings = true;
     lastCompiler = null;
-    languageMode = LanguageMode.ECMASCRIPT5;
+    useUnsupportedFeatures = false;
+    languageMode = LanguageMode.ECMASCRIPT_NEXT;
+    outputCharset = null;
   }
 
   Node parse(String js) {
@@ -50,8 +57,12 @@ public abstract class CodePrinterTestBase extends TestCase {
     CompilerOptions options = new CompilerOptions();
     options.setTrustedStrings(trustedStrings);
     options.preserveTypeAnnotations = preserveTypeAnnotations;
-    // Allow getters and setters.
-    options.setLanguageIn(languageMode);
+    options.setOutputCharset(outputCharset);
+    if (useUnsupportedFeatures) {
+      options.setLanguageInToUnsupported();
+    } else {
+      options.setLanguageIn(languageMode);
+    }
 
     compiler.init(
         ImmutableList.of(SourceFile.fromCode("externs", CompilerTestCase.MINIMAL_EXTERNS)),
@@ -76,9 +87,9 @@ public abstract class CodePrinterTestBase extends TestCase {
 
   private void checkUnexpectedErrorsOrWarnings(
       Compiler compiler, int expected) {
-    int actual = compiler.getErrors().length;
+    int actual = compiler.getErrors().size();
     if (!allowWarnings) {
-      actual += compiler.getWarnings().length;
+      actual += compiler.getWarnings().size();
     }
 
     if (actual != expected) {
@@ -91,7 +102,7 @@ public abstract class CodePrinterTestBase extends TestCase {
           msg += "Warning:" + err + "\n";
         }
       }
-      assertEquals("Unexpected warnings or errors.\n " + msg, expected, actual);
+      assertWithMessage("Unexpected warnings or errors.\n " + msg).that(actual).isEqualTo(expected);
     }
   }
 
@@ -105,6 +116,7 @@ public abstract class CodePrinterTestBase extends TestCase {
 
   CompilerOptions newCompilerOptions(CompilerOptionBuilder builder) {
     CompilerOptions options = new CompilerOptions();
+    options.setOutputCharset(outputCharset);
     options.setTrustedStrings(trustedStrings);
     options.preserveTypeAnnotations = preserveTypeAnnotations;
     options.setLanguageOut(languageMode);
@@ -116,22 +128,29 @@ public abstract class CodePrinterTestBase extends TestCase {
     CompilerOptions options = new CompilerOptions();
     options.setLineLengthThreshold(CompilerOptions.DEFAULT_LINE_LENGTH_THRESHOLD);
     options.setLanguageOut(languageMode);
+    options.setOutputCharset(outputCharset);
     return new CodePrinter.Builder(n).setCompilerOptions(options).build();
   }
 
   void assertPrintNode(String expectedJs, Node ast) {
-    assertEquals(expectedJs, printNode(ast));
+    assertThat(printNode(ast)).isEqualTo(expectedJs);
   }
 
   protected void assertPrint(String js, String expected) {
     parse(expected); // validate the expected string is valid JS
-    assertEquals(expected,
-        parsePrint(js, newCompilerOptions(new CompilerOptionBuilder() {
-          @Override void setOptions(CompilerOptions options) {
-            options.setPrettyPrint(false);
-            options.setLineLengthThreshold(CompilerOptions.DEFAULT_LINE_LENGTH_THRESHOLD);
-          }
-        })));
+    assertThat(
+            parsePrint(
+                js,
+                newCompilerOptions(
+                    new CompilerOptionBuilder() {
+                      @Override
+                      void setOptions(CompilerOptions options) {
+                        options.setPrettyPrint(false);
+                        options.setLineLengthThreshold(
+                            CompilerOptions.DEFAULT_LINE_LENGTH_THRESHOLD);
+                      }
+                    })))
+        .isEqualTo(expected);
   }
 
   protected void assertPrintSame(String js) {

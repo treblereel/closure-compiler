@@ -19,6 +19,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 import com.google.common.collect.ImmutableList;
 import com.google.javascript.jscomp.Es6RewriteClass.ClassDeclarationMetadata;
+import com.google.javascript.jscomp.parsing.parser.FeatureSet.Feature;
 import com.google.javascript.rhino.IR;
 import com.google.javascript.rhino.JSDocInfo;
 import com.google.javascript.rhino.JSDocInfo.Visibility;
@@ -156,8 +157,10 @@ public final class Es6TypedToEs6Converter implements NodeTraversal.Callback, Hot
         visitEnum(t, n, parent);
         break;
       case NAME:
-      case REST:
         maybeVisitColonType(t, n, n);
+        break;
+      case REST:
+        maybeVisitColonType(t, n, n.getOnlyChild());
         break;
       case FUNCTION:
         visitFunction(t, n, parent);
@@ -268,7 +271,8 @@ public final class Es6TypedToEs6Converter implements NodeTraversal.Callback, Hot
         return;
       }
 
-      metadata.insertNodeAndAdvance(createPropertyDefinition(t, member, metadata.fullClassName));
+      metadata.insertNodeAndAdvance(
+          createPropertyDefinition(t, member, metadata.getFullClassNameNode().getQualifiedName()));
       t.reportCodeChange();
     }
 
@@ -323,6 +327,7 @@ public final class Es6TypedToEs6Converter implements NodeTraversal.Callback, Hot
     Node empty = new Node(Token.EMPTY).useSourceInfoIfMissingFrom(n);
     n.replaceChild(superTypes, empty);
     members.setToken(Token.CLASS_MEMBERS);
+    NodeUtil.addFeatureToScript(t.getCurrentScript(), Feature.CLASSES);
 
     maybeCreateQualifiedDeclaration(t, n, parent);
     t.reportCodeChange();

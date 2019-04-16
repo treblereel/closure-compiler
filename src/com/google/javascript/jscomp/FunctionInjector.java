@@ -25,7 +25,6 @@ import com.google.common.base.Predicates;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.javascript.jscomp.ExpressionDecomposer.DecompositionType;
 import com.google.javascript.rhino.Node;
 import com.google.javascript.rhino.Token;
 import com.google.javascript.rhino.jstype.JSType;
@@ -48,6 +47,7 @@ class FunctionInjector {
   private Set<String> knownConstants = new HashSet<>();
   private final boolean assumeStrictThis;
   private final boolean assumeMinimumCapture;
+  private final boolean allowMethodCallDecomposing;
   private final Supplier<String> safeNameIdSupplier;
   private final Supplier<String> throwawayNameSupplier =
       new Supplier<String>() {
@@ -58,10 +58,37 @@ class FunctionInjector {
     }
   };
 
+  public enum Decomposition {
+    DISABLED,
+    ENABLED,
+    // TODD(b/124253050): consider removing this option.
+    ENABLED_WITHOUT_METHOD_CALL_DECOMPOSING;
+  }
+
   /**
-   * @param allowDecomposition Whether an effort should be made to break down
-   * expressions into simpler expressions to allow functions to be injected
-   * where they would otherwise be disallowed.
+   * @param decomposition Whether an effort should be made to break down expressions into simpler
+   *     expressions to allow functions to be injected where they would otherwise be disallowed.
+   */
+  public FunctionInjector(
+      AbstractCompiler compiler,
+      Supplier<String> safeNameIdSupplier,
+      Decomposition decomposition,
+      boolean assumeStrictThis,
+      boolean assumeMinimumCapture) {
+    checkNotNull(compiler);
+    checkNotNull(safeNameIdSupplier);
+    this.compiler = compiler;
+    this.safeNameIdSupplier = safeNameIdSupplier;
+    this.assumeStrictThis = assumeStrictThis;
+    this.assumeMinimumCapture = assumeMinimumCapture;
+    this.allowDecomposition = !decomposition.equals(Decomposition.DISABLED);
+    this.allowMethodCallDecomposing = decomposition.equals(Decomposition.ENABLED);
+  }
+
+  /**
+   * @param allowDecomposition Whether an effort should be made to break down expressions into
+   *     simpler expressions to allow functions to be injected where they would otherwise be
+   *     disallowed.
    */
   public FunctionInjector(
       AbstractCompiler compiler,
@@ -69,13 +96,12 @@ class FunctionInjector {
       boolean allowDecomposition,
       boolean assumeStrictThis,
       boolean assumeMinimumCapture) {
-    checkNotNull(compiler);
-    checkNotNull(safeNameIdSupplier);
-    this.compiler = compiler;
-    this.safeNameIdSupplier = safeNameIdSupplier;
-    this.allowDecomposition = allowDecomposition;
-    this.assumeStrictThis = assumeStrictThis;
-    this.assumeMinimumCapture = assumeMinimumCapture;
+    this(
+        compiler,
+        safeNameIdSupplier,
+        allowDecomposition ? Decomposition.ENABLED : Decomposition.DISABLED,
+        assumeStrictThis,
+        assumeMinimumCapture);
   }
 
   /** The type of inlining to perform. */
@@ -155,26 +181,28 @@ class FunctionInjector {
     final String fnRecursionName = fnNode.getFirstChild().getString();
     checkState(fnRecursionName != null);
 
-    // If the function references "arguments" directly in the function
-    boolean referencesArguments = NodeUtil.isNameReferenced(
-        block, "arguments", NodeUtil.MATCH_NOT_FUNCTION);
+    // If the function references "arguments" directly in the function or in an arrow function
+    boolean referencesArguments =
+        NodeUtil.isNameReferenced(block, "arguments", NodeUtil.MATCH_NOT_VANILLA_FUNCTION);
 
-    // or it references "eval" or one of its names anywhere.
-    Predicate<Node> p = new Predicate<Node>(){
-      @Override
-      public boolean apply(Node n) {
-        if (n.isName()) {
-          return n.getString().equals("eval")
-            || (!fnName.isEmpty()
-                && n.getString().equals(fnName))
-            || (!fnRecursionName.isEmpty()
-                && n.getString().equals(fnRecursionName));
-        }
-        return false;
-      }
-    };
+    Predicate<Node> blocksInjection =
+        new Predicate<Node>() {
+          @Override
+          public boolean apply(Node n) {
+            if (n.isName()) {
+              // References "eval" or one of its names anywhere.
+              return n.getString().equals("eval")
+                  || (!fnName.isEmpty() && n.getString().equals(fnName))
+                  || (!fnRecursionName.isEmpty() && n.getString().equals(fnRecursionName));
+            } else if (n.isSuper()) {
+              // Don't inline if this function or its inner functions contains super
+              return true;
+            }
+            return false;
+          }
+        };
 
-    return !referencesArguments && !NodeUtil.has(block, p, Predicates.alwaysTrue());
+    return !referencesArguments && !NodeUtil.has(block, blocksInjection, Predicates.alwaysTrue());
   }
 
   /**
@@ -254,15 +282,13 @@ class FunctionInjector {
   }
 
   private static boolean hasSpreadCallArgument(Node callNode) {
-    Predicate<Node> hasSpreadCallArgumentPredicate =
-        new Predicate<Node>() {
-          @Override
-          public boolean apply(Node input) {
-            return input.isSpread();
-          }
-        };
-
-    return NodeUtil.has(callNode, hasSpreadCallArgumentPredicate, Predicates.alwaysTrue());
+    checkArgument(callNode.isCall(), callNode);
+    for (Node arg = callNode.getSecondChild(); arg != null; arg = arg.getNext()) {
+      if (arg.isSpread()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -270,6 +296,19 @@ class FunctionInjector {
    */
   Node inline(Reference ref, String fnName, Node fnNode) {
     checkState(compiler.getLifeCycleStage().isNormalized());
+    return internalInline(ref, fnName, fnNode);
+  }
+
+  /**
+   * Inline a function into the call site. Note that this unsafe version doesn't verify if the AST
+   * is normalized. You should use {@link inline} instead, unless you are 100% certain that the bit
+   * of code you're inlining is safe without being normalized first.
+   */
+  Node unsafeInline(Reference ref, String fnName, Node fnNode) {
+    return internalInline(ref, fnName, fnNode);
+  }
+
+  private Node internalInline(Reference ref, String fnName, Node fnNode) {
     Node result;
     if (ref.mode == InliningMode.DIRECT) {
       result = inlineReturnValue(ref, fnNode);
@@ -319,7 +358,7 @@ class FunctionInjector {
     // If the call site had a cast ensure it's persisted to the new expression that replaces it.
     JSType typeBeforeCast = callNode.getJSTypeBeforeCast();
     if (typeBeforeCast != null) {
-      newExpression.putProp(Node.TYPE_BEFORE_CAST, typeBeforeCast);
+      newExpression.setJSTypeBeforeCast(typeBeforeCast);
       newExpression.setJSType(callNode.getJSType());
     }
     callParentNode.replaceChild(callNode, newExpression);
@@ -369,10 +408,11 @@ class FunctionInjector {
         // Nothing to do.
       }
     },
+
     /**
      * An var declaration and initialization, where the result of the call is
      * assigned to the declared name
-     * name. For example: "a = foo();".
+     * name. For example: "var a = foo();".
      *   VAR
      *     NAME A
      *       CALL
@@ -384,6 +424,7 @@ class FunctionInjector {
         // Nothing to do.
       }
     },
+
     /**
      * An arbitrary expression, the root of which is a EXPR_RESULT, IF,
      * RETURN, SWITCH or VAR.  The call must be the first side-effect in
@@ -467,17 +508,14 @@ class FunctionInjector {
       // left-hand-side of the assignments and handling them as EXPRESSION?
       return CallSiteType.VAR_DECL_SIMPLE_ASSIGNMENT;
     } else {
-      Node expressionRoot = ExpressionDecomposer.findExpressionRoot(callNode);
-      if (expressionRoot != null) {
-        ExpressionDecomposer decomposer = getDecomposer(ref.scope);
-        DecompositionType type = decomposer.canExposeExpression(callNode);
-        if (type == DecompositionType.MOVABLE) {
+      ExpressionDecomposer decomposer = getDecomposer(ref.scope);
+      switch (decomposer.canExposeExpression(callNode)) {
+        case MOVABLE:
           return CallSiteType.EXPRESSION;
-        } else if (type == DecompositionType.DECOMPOSABLE) {
+        case DECOMPOSABLE:
           return CallSiteType.DECOMPOSABLE_EXPRESSION;
-        } else {
-          checkState(type == DecompositionType.UNDECOMPOSABLE);
-        }
+        case UNDECOMPOSABLE:
+          break;
       }
     }
 
@@ -486,11 +524,7 @@ class FunctionInjector {
 
   private ExpressionDecomposer getDecomposer(Scope scope) {
     return new ExpressionDecomposer(
-        compiler,
-        safeNameIdSupplier,
-        knownConstants,
-        scope,
-        compiler.getOptions().allowMethodCallDecomposing());
+        compiler, safeNameIdSupplier, knownConstants, scope, allowMethodCallDecomposing);
   }
 
   /**
@@ -729,7 +763,7 @@ class FunctionInjector {
         // Limit the inlining
         Set<String> allNamesToAlias = new HashSet<>(namesToAlias);
         FunctionArgumentInjector.maybeAddTempsForCallArguments(
-            fnNode, args, allNamesToAlias, compiler.getCodingConvention());
+            compiler, fnNode, args, allNamesToAlias, compiler.getCodingConvention());
         if (!allNamesToAlias.isEmpty()) {
           return false;
         }
@@ -785,7 +819,7 @@ class FunctionInjector {
       // Limit the inlining
       Set<String> allNamesToAlias = new HashSet<>(namesToAlias);
       FunctionArgumentInjector.maybeAddTempsForCallArguments(
-          fnNode, args, allNamesToAlias, compiler.getCodingConvention());
+          compiler, fnNode, args, allNamesToAlias, compiler.getCodingConvention());
       if (!allNamesToAlias.isEmpty()) {
         return CanInlineResult.NO;
       }
