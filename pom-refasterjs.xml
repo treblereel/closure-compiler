@@ -24,7 +24,7 @@
   <packaging>jar</packaging>
 
   <name>Closure Compiler RefasterJS</name>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1-SNAPSHOT</version>
 
   <url>https://developers.google.com/closure/compiler/</url>
   <description>
@@ -43,7 +43,7 @@
   <parent>
     <groupId>org.treblereel.gwt.javascript</groupId>
     <artifactId>closure-compiler-main</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>0.1-SNAPSHOT</version>
     <relativePath>pom-main.xml</relativePath>
   </parent>
 

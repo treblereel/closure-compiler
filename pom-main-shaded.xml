@@ -13,7 +13,10 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+  >
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.treblereel.gwt.javascript</groupId>
@@ -41,6 +44,9 @@
     <relativePath>pom-main.xml</relativePath>
   </parent>
 
+  <properties>
+    <maven.javadoc.skip>false</maven.javadoc.skip>
+  </properties>
   <build>
     <plugins>
       <plugin>
@@ -70,7 +76,7 @@
             <configuration>
               <filters>
                 <filter>
-                  <artifact>com.google.javascript:closure-compiler</artifact>
+                  <artifact>org.treblereel.gwt.javascript:closure-compiler</artifact>
                   <excludes>
                     <exclude>**/*.gwt.xml</exclude>
                     <exclude>com/google/javascript/jscomp/gwt/**</exclude>
@@ -85,6 +91,24 @@
                 </transformer>
               </transformers>
             </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.0.1</version>
+        <configuration>
+          <doclint>none</doclint>
+          <detectLinks>false</detectLinks>
+          <excludePackageNames>*.junit.*:*.resources.*:*.gwt.*:*.testing.*:*.debugger.*:*.webservice.*:*.debugging.*:*.ant.*</excludePackageNames>
+        </configuration>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
           </execution>
         </executions>
       </plugin>
