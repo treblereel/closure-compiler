@@ -20,7 +20,7 @@
   <packaging>pom</packaging>
 
   <name>Closure Compiler Parent</name>
-  <version>0.1-SNAPSHOT</version>
+  <version>0.1</version>
 
   <url>https://github.com/google/closure-compiler/</url>
   <description>
@@ -41,6 +41,7 @@
     <url>https://github.com/treblereel/closure-compiler</url>
     <connection>scm:git:git://github.com/treblereel/closure-compiler.git</connection>
     <developerConnection>scm:git:git@github.com:treblereel/closure-compiler.git</developerConnection>
+    <tag>closure-compiler-parent-0.1</tag>
   </scm>
 
   <issueManagement>

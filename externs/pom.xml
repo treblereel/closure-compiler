@@ -21,7 +21,7 @@
   <packaging>jar</packaging>
 
   <name>Closure Compiler Externs</name>
-  <version>0.1-SNAPSHOT</version>
+  <version>0.1</version>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -31,7 +31,7 @@
   <parent>
     <groupId>org.treblereel.gwt.javascript</groupId>
     <artifactId>closure-compiler-parent</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.1</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 

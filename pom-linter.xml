@@ -21,7 +21,7 @@
   <packaging>jar</packaging>
 
   <name>Closure Compiler Linter</name>
-  <version>0.1-SNAPSHOT</version>
+  <version>0.1</version>
 
   <url>https://developers.google.com/closure/compiler/</url>
   <description>
@@ -41,7 +41,7 @@
   <parent>
     <groupId>org.treblereel.gwt.javascript</groupId>
     <artifactId>closure-compiler-main</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.1</version>
     <relativePath>pom-main.xml</relativePath>
   </parent>
 
