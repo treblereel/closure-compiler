@@ -75,11 +75,11 @@
     It may be sufficient to include a <distributionManagement> per
     http://central.sonatype.org/pages/apache-maven.html#distribution-management-and-authentication
   -->
-  <parent>
+<!--  <parent>
     <groupId>org.sonatype.oss</groupId>
     <artifactId>oss-parent</artifactId>
     <version>9</version>
-  </parent>
+  </parent>-->
 
   <modules>
     <module>externs/pom.xml</module>

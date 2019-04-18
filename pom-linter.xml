@@ -93,6 +93,10 @@
             </goals>
           </execution>
         </executions>
+          <configuration>
+              <doclint>none</doclint>
+            <excludePackageNames>com.google.javascript</excludePackageNames>
+          </configuration>
       </plugin>
     </plugins>
   </build>

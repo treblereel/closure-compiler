@@ -13,59 +13,64 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.treblereel.gwt.javascript</groupId>
-  <artifactId>closure-compiler-unshaded</artifactId>
-  <packaging>jar</packaging>
-
-  <name>Closure Compiler Unshaded</name>
-  <version>0.1-SNAPSHOT</version>
-
-  <url>https://developers.google.com/closure/compiler/</url>
-  <description>
-    Closure Compiler is a JavaScript optimizing compiler. It parses your
-    JavaScript, analyzes it, removes dead code and rewrites and minimizes
-    what's left. It also checks syntax, variable references, and types, and
-    warns about common JavaScript pitfalls. It is used in many of Google's
-    JavaScript apps, including Gmail, Google Web Search, Google Maps, and
-    Google Docs.
-  </description>
-  <inceptionYear>2009</inceptionYear>
-
-  <parent>
     <groupId>org.treblereel.gwt.javascript</groupId>
-    <artifactId>closure-compiler-main</artifactId>
-    <version>0.1-SNAPSHOT</version>
-    <relativePath>pom-main.xml</relativePath>
-  </parent>
+    <artifactId>closure-compiler-unshaded</artifactId>
+    <packaging>jar</packaging>
 
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <configuration>
-          <archive>
-            <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
-          </archive>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-javadoc-plugin</artifactId>
-        <version>3.0.1</version>
-        <executions>
-          <execution>
-            <id>attach-javadocs</id>
-            <goals>
-              <goal>jar</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
-  </build>
+    <name>Closure Compiler Unshaded</name>
+    <version>0.1-SNAPSHOT</version>
+
+    <url>https://developers.google.com/closure/compiler/</url>
+    <description>
+        Closure Compiler is a JavaScript optimizing compiler. It parses your
+        JavaScript, analyzes it, removes dead code and rewrites and minimizes
+        what's left. It also checks syntax, variable references, and types, and
+        warns about common JavaScript pitfalls. It is used in many of Google's
+        JavaScript apps, including Gmail, Google Web Search, Google Maps, and
+        Google Docs.
+    </description>
+    <inceptionYear>2009</inceptionYear>
+
+    <parent>
+        <groupId>org.treblereel.gwt.javascript</groupId>
+        <artifactId>closure-compiler-main</artifactId>
+        <version>0.1-SNAPSHOT</version>
+        <relativePath>pom-main.xml</relativePath>
+    </parent>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.0.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <doclint>none</doclint>
+                    <excludePackageNames>com.google.javascript</excludePackageNames>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
