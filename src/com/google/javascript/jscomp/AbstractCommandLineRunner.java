@@ -2162,7 +2162,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler,
 
       if (input.isModule()) {
         // TODO(sdh): This is copied from ClosureBundler
-        out.append("goog.loadModule(\"'use strict'\"+");
+        out.append("goog.loadModule(\"'use strict';\\n\"+");
         out.append(new CodePrinter.Builder(IR.string(input.getSourceFile().getCode())).build());
 
         String pathToInput = new File(input.getName()).getCanonicalPath();
