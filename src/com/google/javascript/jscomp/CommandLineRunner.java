@@ -63,6 +63,7 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
@@ -2096,9 +2097,20 @@ public class CommandLineRunner extends AbstractCommandLineRunner<Compiler, Compi
   }
 
   @Override
-  protected void prepForBundleAndAppendTo(Appendable out, CompilerInput input, String content)
+  protected void prepForBundleAndAppendTo(Appendable out, CompilerInput input, String content, String outputPath)
       throws IOException {
-    getBundler().withPath(input.getName()).appendTo(out, input, content);
+    String pathToInput = new File(input.getName()).getCanonicalPath();
+    String pathToOutput = new File(outputPath).getParentFile().getCanonicalPath();
+    String relativePath = Paths.get(pathToOutput).relativize(Paths.get(pathToInput)).toString();
+
+    ClosureBundler bundler;
+    if (!relativePath.startsWith("..")) {
+      bundler = getBundler().useEval(true).withSourceUrl(relativePath);
+    } else {
+      bundler = getBundler();
+    }
+
+    bundler.withPath(input.getName()).appendTo(out, input, content);
   }
 
   @Override

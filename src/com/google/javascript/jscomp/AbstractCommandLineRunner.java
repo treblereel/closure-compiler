@@ -296,7 +296,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler, B extends Co
    */
   @GwtIncompatible("Unnecessary")
   protected abstract void prepForBundleAndAppendTo(
-      Appendable out, CompilerInput input, String content) throws IOException;
+      Appendable out, CompilerInput input, String content, String outputPath) throws IOException;
 
   /** Writes whatever runtime libraries are needed to bundle. */
   @GwtIncompatible("Unnecessary")
@@ -2296,17 +2296,19 @@ public abstract class AbstractCommandLineRunner<A extends Compiler, B extends Co
         // Generate per-module manifests or bundles.
         Iterable<JSChunk> chunks = compiler.getChunkGraph().getAllChunks();
         for (JSChunk chunk : chunks) {
+          String outputPath = expandCommandLinePath(output, chunk);
           try (Writer out = fileNameToOutputWriter2(expandCommandLinePath(output, chunk))) {
             if (isManifest) {
               printManifestTo(chunk, out);
             } else {
-              printBundleTo(chunk, out);
+              printBundleTo(chunk, out, outputPath);
             }
           }
         }
       } else {
         // Generate a single file manifest or bundle.
-        try (Writer out = fileNameToOutputWriter2(expandCommandLinePath(output, null))) {
+        String outputPath = expandCommandLinePath(output, null);
+        try (Writer out = fileNameToOutputWriter2(outputPath)) {
           if (config.module.isEmpty()) {
             // For a single-module compilation, generate a single headerless manifest or bundle
             // containing only the strong files.
@@ -2314,11 +2316,11 @@ public abstract class AbstractCommandLineRunner<A extends Compiler, B extends Co
             if (isManifest) {
               printManifestTo(chunk, out);
             } else {
-              printBundleTo(chunk, out);
+              printBundleTo(chunk, out, outputPath);
             }
           } else {
             // For a multi-module compilation, generate a single manifest file with module headers.
-            printChunkGraphManifestOrBundleTo(compiler.getChunkGraph(), out, isManifest);
+            printChunkGraphManifestOrBundleTo(compiler.getChunkGraph(), out, isManifest, outputPath);
           }
         }
       }
@@ -2345,7 +2347,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler, B extends Co
   /** Prints a set of modules to the manifest or bundle file. */
   @VisibleForTesting
   @GwtIncompatible("Unnecessary")
-  void printChunkGraphManifestOrBundleTo(JSChunkGraph graph, Appendable out, boolean isManifest)
+  void printChunkGraphManifestOrBundleTo(JSChunkGraph graph, Appendable out, boolean isManifest, String outputPath)
       throws IOException {
     Joiner commas = Joiner.on(",");
     boolean requiresNewline = false;
@@ -2368,7 +2370,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler, B extends Co
                 "{%s%s}\n", chunk.getName(), dependencies.isEmpty() ? "" : ":" + dependencies));
         printManifestTo(chunk, out);
       } else {
-        printBundleTo(chunk, out);
+        printBundleTo(chunk, out, outputPath);
       }
       requiresNewline = true;
     }
@@ -2402,8 +2404,8 @@ public abstract class AbstractCommandLineRunner<A extends Compiler, B extends Co
    */
   @VisibleForTesting
   @GwtIncompatible("Unnecessary")
-  void printBundleTo(JSChunk chunk, Appendable out) throws IOException {
-    ImmutableList<CompilerInput> inputs = chunk.getInputs();
+  void printBundleTo(JSChunk module, Appendable out, String outputPath) throws IOException {
+    ImmutableList<CompilerInput> inputs = module.getInputs();
     // Prebuild ASTs before they're needed in getLoadFlags, for performance and because
     // StackOverflowErrors can be hit if not prebuilt.
     if (compiler.getOptions().numParallelThreads > 1) {
@@ -2450,7 +2452,7 @@ public abstract class AbstractCommandLineRunner<A extends Compiler, B extends Co
       out.append(displayName);
       out.append("\n");
 
-      prepForBundleAndAppendTo(out, input, code);
+      prepForBundleAndAppendTo(out, input, code, outputPath);
 
       out.append("\n");
     }
