@@ -24,7 +24,7 @@
   <packaging>jar</packaging>
 
   <name>Closure Compiler Externs</name>
-  <version>0.3-SNAPSHOT</version>
+  <version>1.0-SNAPSHOT</version>
 
   <parent>
     <groupId>com.vertispan.javascript</groupId>

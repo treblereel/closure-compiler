@@ -24,7 +24,7 @@
   <packaging>jar</packaging>
 
   <name>Closure Compiler</name>
-  <version>0.3-SNAPSHOT</version>
+  <version>1.0-SNAPSHOT</version>
 
   <url>https://developers.google.com/closure/compiler/</url>
   <description>
