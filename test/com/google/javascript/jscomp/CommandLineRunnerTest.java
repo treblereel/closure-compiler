@@ -1872,7 +1872,7 @@ public final class CommandLineRunnerTest {
 
     StringBuilder builder = new StringBuilder();
     lastCommandLineRunner.printChunkGraphManifestOrBundleTo(
-        lastCompiler.getChunkGraph(), builder, true);
+        lastCompiler.getChunkGraph(), builder, true, null);
     assertThat(builder.toString())
         .isEqualTo(
             """
@@ -1899,7 +1899,7 @@ public final class CommandLineRunnerTest {
 
     StringBuilder builder = new StringBuilder();
     lastCommandLineRunner.printChunkGraphManifestOrBundleTo(
-        lastCompiler.getChunkGraph(), builder, true);
+        lastCompiler.getChunkGraph(), builder, true, null);
     assertThat(builder.toString())
         .isEqualTo(
             """

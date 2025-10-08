@@ -63,6 +63,7 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
@@ -74,6 +75,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.logging.Level;
@@ -2068,9 +2070,24 @@ public class CommandLineRunner extends AbstractCommandLineRunner<Compiler, Compi
   }
 
   @Override
-  protected void prepForBundleAndAppendTo(Appendable out, CompilerInput input, String content)
+  protected void prepForBundleAndAppendTo(Appendable out, CompilerInput input, String content, String outputPath)
       throws IOException {
-    getBundler().withPath(input.getName()).appendTo(out, input, content);
+    Path pathToInput = Paths.get(new File(input.getName()).getCanonicalPath());
+    Path pathToOutput = Paths.get(new File(outputPath).getParentFile().getCanonicalPath());
+    final ClosureBundler bundler;
+    if (Objects.equals(pathToInput.getRoot(), pathToOutput.getRoot())) {
+      String relativePath = pathToOutput.relativize(pathToInput).toString();
+      if (!relativePath.startsWith("..")) {
+        bundler = getBundler().useEval(true).withSourceUrl(relativePath);
+      } else {
+        bundler = getBundler();
+      }
+    } else {
+      // Didn't share a root (such as two different windows drives), must not relativize
+      bundler = getBundler();
+    }
+
+    bundler.withPath(input.getName()).appendTo(out, input, content);
   }
 
   @Override
